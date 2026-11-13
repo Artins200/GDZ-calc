@@ -1,0 +1,6 @@
+.build/
+tools/aapt2
+tools/*.jar
+tools/*.keystore
+tools/android.jar
+res/icon-source.png

@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, viewport-fit=cover">
+<title>Калькулятор</title>
+<meta name="description" content="Калькулятор: считает примеры в столбик, решает задачи, неравенства и промежутки.">
+<meta name="theme-color" content="#0e1013">
+<meta name="color-scheme" content="dark">
+<link rel="stylesheet" href="styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23171a1e'/><text x='16' y='23' font-size='19' text-anchor='middle' fill='%23ff9f0a' font-family='Georgia'>∑</text></svg>">
+</head>
+<body data-screen="calc">
+
+<div class="app">
+
+  <header class="bar">
+    <div class="bar-title" id="bar-title">Калькулятор</div>
+    <button class="gear" id="open-settings" aria-label="Настройки" title="Настройки">
+      <svg viewBox="0 0 24 24" width="21" height="21" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">
+        <circle cx="12" cy="12" r="3.2"/>
+        <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.6 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.6a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9v0a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+    </button>
+  </header>
+
+  <nav class="tabs" id="tabs">
+    <button type="button" class="tab active" data-go="calc">Счёт</button>
+    <button type="button" class="tab" data-go="ineq">Неравенства</button>
+    <button type="button" class="tab" data-go="task">Задачи</button>
+    <button type="button" class="tab" data-go="interval">Прямая</button>
+  </nav>
+
+  <main>
+
+    <!-- ============================ КАЛЬКУЛЯТОР ============================ -->
+    <section class="screen active" id="screen-calc">
+      <div class="calc-wrap">
+
+        <div class="calc">
+          <div class="display">
+            <div class="display-expr" id="calc-expr" aria-live="off"></div>
+            <div class="display-result" id="calc-result" aria-live="polite">0</div>
+          </div>
+
+          <div class="tools">
+            <button type="button" data-key="(">(</button>
+            <button type="button" data-key=")">)</button>
+            <button type="button" data-key="sqrt(">√</button>
+            <button type="button" data-key="^2">x²</button>
+            <button type="button" data-key="^">xʸ</button>
+            <button type="button" data-key="PI">π</button>
+          </div>
+
+          <div class="keypad">
+            <button type="button" class="k fn" data-act="ac">AC</button>
+            <button type="button" class="k fn" data-act="sign">+/−</button>
+            <button type="button" class="k fn" data-act="percent">%</button>
+            <button type="button" class="k op" data-key="/">÷</button>
+
+            <button type="button" class="k" data-key="7">7</button>
+            <button type="button" class="k" data-key="8">8</button>
+            <button type="button" class="k" data-key="9">9</button>
+            <button type="button" class="k op" data-key="*">×</button>
+
+            <button type="button" class="k" data-key="4">4</button>
+            <button type="button" class="k" data-key="5">5</button>
+            <button type="button" class="k" data-key="6">6</button>
+            <button type="button" class="k op" data-key="-">−</button>
+
+            <button type="button" class="k" data-key="1">1</button>
+            <button type="button" class="k" data-key="2">2</button>
+            <button type="button" class="k" data-key="3">3</button>
+            <button type="button" class="k op" data-key="+">+</button>
+
+            <button type="button" class="k fn" data-act="del" aria-label="Удалить">⌫</button>
+            <button type="button" class="k" data-key="0">0</button>
+            <button type="button" class="k" data-key=".">,</button>
+            <button type="button" class="k op eq" data-act="eq">=</button>
+          </div>
+        </div>
+
+        <!-- «в столбик» — прямо здесь, без настроек -->
+        <div class="colblock">
+          <label class="col-toggle">
+            <input type="checkbox" id="long-toggle">
+            <span class="col-box"></span>
+            <span class="col-text">Считать в столбик</span>
+          </label>
+          <div class="col-out" id="long-out" hidden></div>
+        </div>
+
+      </div>
+    </section>
+
+    <!-- =========================== НЕРАВЕНСТВА ============================ -->
+    <section class="screen" id="screen-ineq">
+      <div class="panel panel-fill">
+        <label class="field-label" for="ineq-input">Неравенство, система или промежутки</label>
+        <textarea id="ineq-input" rows="3" placeholder="3x − 7 < 5x + 1" autocomplete="off" spellcheck="false"></textarea>
+
+        <div class="chips" id="ineq-examples">
+          <button type="button" data-ex="3x − 7 &lt; 5x + 1">3x − 7 &lt; 5x + 1</button>
+          <button type="button" data-ex="−2 ⩽ 4 − 2x ⩽ 6">двойное</button>
+          <button type="button" data-ex="|x − 2| ⩽ 5">модуль</button>
+          <button type="button" data-ex="2x + 1 &gt; 5; 3x − 4 ⩽ 8">система</button>
+          <button type="button" data-ex="(x + 3)/2 ⩾ (2x − 1)/3">дроби</button>
+          <button type="button" data-ex="A = [−3; 4), B = (1; 7]
+A ∩ B
+A ∪ B">A ∩ B, A ∪ B</button>
+        </div>
+
+        <button class="btn primary wide" id="ineq-solve">Решить</button>
+        <p class="hint hint-note">Дроби пишите в скобках: (x + 3)/2 ≥ (2x − 1)/3. Систему — каждое неравенство с новой строки.</p>
+        <div class="out" id="ineq-output"></div>
+      </div>
+    </section>
+
+    <!-- ============================== ЗАДАЧА =============================== -->
+    <section class="screen" id="screen-task">
+      <div class="panel">
+        <label class="field-label" for="task-input">Условие задачи</label>
+        <textarea id="task-input" rows="4" placeholder="Вставьте текст задачи" autocomplete="off"></textarea>
+        <button class="btn primary wide" id="task-solve">Решить</button>
+        <div class="out" id="task-result"></div>
+      </div>
+    </section>
+
+    <!-- ============================ ПРОМЕЖУТКИ ============================ -->
+    <section class="screen" id="screen-interval">
+      <div class="panel">
+        <label class="field-label" for="interval-input">Промежуток или неравенство</label>
+        <input class="input" type="text" id="interval-input" value="[−2; 5)" autocomplete="off" spellcheck="false">
+        <button class="btn primary wide" id="interval-go">Показать</button>
+        <div class="out" id="interval-output"></div>
+      </div>
+    </section>
+
+    <!-- ============================ НАСТРОЙКИ ============================= -->
+    <section class="screen" id="screen-settings">
+      <div class="panel">
+        <div class="panel-head">
+          <button class="back" data-close-settings aria-label="Назад">←</button>
+          <h2>Настройки</h2>
+        </div>
+        <div id="settings-body"></div>
+        <div class="ref-link">
+          <button class="row-link" id="open-reference">
+            <span>Справочник</span>
+            <span class="row-link-sub">формулы, правила, о приложении</span>
+            <span class="chev">›</span>
+          </button>
+        </div>
+      </div>
+    </section>
+
+    <!-- ============================ СПРАВОЧНИК ============================ -->
+    <section class="screen" id="screen-ref">
+      <div class="panel">
+        <div class="panel-head">
+          <button class="back" id="ref-back" aria-label="Назад">←</button>
+          <h2 id="ref-title">Справочник</h2>
+        </div>
+
+        <div id="ref-list-view">
+          <input class="input" type="text" id="formula-search" placeholder="Поиск формулы" autocomplete="off">
+          <div class="chapters" id="chapter-filter"></div>
+          <div class="list" id="formula-list"></div>
+          <div class="about" id="ref-about"></div>
+        </div>
+
+        <div id="ref-detail-view" hidden>
+          <div id="formula-detail"></div>
+        </div>
+      </div>
+    </section>
+
+  </main>
+</div>
+
+<script type="module" src="js/app.js"></script>
+</body>
+</html>
