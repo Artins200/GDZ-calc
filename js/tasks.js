@@ -30,6 +30,7 @@ export const TASK_EXAMPLES = [
   { label: '§ 11 · ФСУ', text: 'Раскройте скобки и упростите: (2x + 3)².', from: 'учебник, с. 166' },
   { label: '§ 12 · разложение', text: 'Разложите на множители: 49x² − 16.', from: 'учебник, с. 179' },
   { label: '§ 2 · проценты', text: 'Найдите 15% от числа 240.', from: 'учебник, с. 12' },
+  { label: 'Остатки · 3 условия', text: 'Найдите наименьшее натуральное число, которое при делении на 3 даёт остаток 1, при делении на 5 — остаток 2, а при делении на 7 — остаток 3.', from: 'своя задача' },
   { label: 'НЕ из учебника · движение', text: 'Велосипедист ехал 2,5 часа со скоростью 18 км/ч. Какое расстояние он проехал?', from: 'своя задача' },
   { label: 'НЕ из учебника · скидка', text: 'Товар стоил 2400 рублей. Цену снизили на 25%. Сколько теперь стоит товар?', from: 'своя задача' },
   { label: 'НЕ из учебника · работа', text: 'Станок изготавливает 45 деталей в час. Сколько деталей он сделает за 8 часов?', from: 'своя задача' },
@@ -1085,6 +1086,147 @@ addRule({
   },
 });
 
+/* ---- 31б. Остатки по нескольким модулям (китайская теорема об остатках) ----
+ * «Найдите наименьшее натуральное число, которое при делении на 3 даёт
+ *  остаток 1, при делении на 5 — остаток 2, при делении на 7 — остаток 3».
+ * Условия извлекаются из текста, числа берутся любые; решение — перебором
+ * с шагом НОК и проверкой каждого условия, плюс проверка ответа.
+ * ---------------------------------------------------------------------- */
+function parseRemainderConditions(text) {
+  const out = [];
+  const push = (m, r) => {
+    const mod = Number(m), rem = Number(r);
+    if (!(mod > 1) || !Number.isFinite(rem) || rem < 0 || rem >= mod) return;
+    const key = `${mod}:${rem}`;
+    if (!out.some((c) => c.key === key)) out.push({ m: mod, r: rem, key });
+  };
+  // «при делении на 3 даёт остаток 1», «делится на 4 с остатком 3»
+  for (const m of text.matchAll(/н[ао]\s*(\d+)\s*(?:даёт|дает|даст|получается|в остатке|остаток|с остатком|остатке)?[^.;]*?остат(?:ок|ке|ком)\s*(?:равен|равный|—|-|:)?\s*(\d+)/g)) push(m[1], m[2]);
+  // «остаток при делении на 5 равен 2»
+  for (const m of text.matchAll(/остат(?:ок|ке|ком)\s*(?:при делении)?\s*н[ао]\s*(\d+)\s*(?:равен|равный|—|-|:)?\s*(\d+)/g)) push(m[1], m[2]);
+  // короткая запись «на 3 остаток 1», «÷3 → 1», «mod 3 = 1»
+  for (const m of text.matchAll(/(?:на|÷|\/|mod)\s*(\d+)\s*(?:→|->|=|:)?\s*(?:остаток\s*)?(\d+)\b/g)) push(m[1], m[2]);
+  return out;
+}
+
+addRule({
+  id: 'remainders_crt', name: 'Остатки от деления на несколько чисел',
+  run(ctx) {
+    if (!ctx.has(/остат/)) return null;
+    const conds = parseRemainderConditions(ctx.text);
+    if (conds.length < 2) return null;
+    // шаблон «деление с остатком» (a и b) — это другой случай
+    if (conds.length === 2 && ctx.has(/в частном|частное/)) return null;
+
+    const L = conds.reduce((a, c) => lcm(a, c.m), 1);
+    const findSmallest = (natural) => {
+      for (let n = natural ? 1 : 0; n <= L * 50 + 1000; n++) {
+        if (conds.every((c) => ((n % c.m) + c.m) % c.m === c.r)) return n;
+      }
+      return null;
+    };
+    const n0 = findSmallest(true);
+    const n0Natural = n0 === null ? 0 : n0 === 0 ? 1 : n0;
+
+    return buildResult(26, {
+      matched: `Остатки: ${conds.map((c) => `÷${c.m} → ${c.r}`).join(', ')}`,
+      why: [
+        `найдено условий: ${conds.length}`,
+        ...conds.map((c) => `при делении на ${c.m} остаток ${c.r}`),
+        'ищем число, которое подходит ко всем условиям сразу',
+      ],
+      inputs: Object.fromEntries(conds.slice(0, 4).map((c, i) => [`m${i + 1}`, c.m]))
+        , unknown: 'наименьшее число',
+      formulaIds: ['division_remainder', 'div_remainder_ref'],
+      compute: () => {
+        const check = (n) => conds.map((c) => {
+          const q = Math.floor(n / c.m), r = n - c.m * q;
+          return { ...c, q, r, ok: r === c.r, back: `${c.m}·${q} + ${r} = ${n}` };
+        });
+        const checks = check(n0Natural);
+        const allOk = checks.every((c) => c.ok);
+
+        // --- способ 1: перебор всех чисел подряд ---
+        const brute = [];
+        const step = (n) => conds.map((c) => `${n} ÷ ${c.m} = ${Math.floor(n / c.m)} (ост. ${n % c.m})`).join('; ');
+        let skipped = 0;
+        for (let n = 1; n <= n0Natural; n++) {
+          if (conds.every((c) => n % c.m === c.r)) {
+            brute.push(`${n} — подошло по всем условиям ✓`);
+            break;
+          }
+          // Первые 20 чисел показываем подряд, дальше — каждое 10-е и последние два.
+          const nearEnd = n >= n0Natural - 2;
+          if (n <= 20 || nearEnd || n % 10 === 0) {
+            if (skipped) { brute.push(`… (пропускаем ${skipped} чисел, они не подошли)`); skipped = 0; }
+            brute.push(`${n}: ${step(n)}`);
+          } else skipped++;
+        }
+        if (skipped) brute.push(`… (пропускаем ${skipped} чисел)`);
+        brute.push(`Наименьшее подходящее число — ${n0Natural}.`);
+
+        // --- способ 2: по первому условию с шагом -------------------------
+        const c1 = conds[0];
+        const stepwise = [
+          `Берём только те числа, которые дают остаток ${c1.r} при делении на ${c1.m}: `
+          + `${c1.r === 0 ? c1.m : c1.r}, ${(c1.r === 0 ? c1.m : c1.r) + c1.m}, ${(c1.r === 0 ? c1.m : c1.r) + 2 * c1.m}, … `
+          + `— это все числа вида ${c1.r === 0 ? '' : `${c1.r} + `}${c1.m}k.`,
+        ];
+        let pool = [];
+        const start = c1.r === 0 ? c1.m : c1.r;
+        for (let n = start, k = 0; k < 60; k++, n += c1.m) pool.push(n);
+        const firstPool = pool.slice(0, 12);
+        for (let i = 1; i < conds.length; i++) {
+          const c = conds[i];
+          const fitting = pool.filter((n) => n % c.m === c.r);
+          stepwise.push(`Из них остаток ${c.r} при делении на ${c.m} дают: ${fitting.slice(0, 6).join(', ')}${fitting.length > 6 ? ', …' : ''}`);
+          pool = fitting;
+          if (!pool.length) { stepwise.push('В этом диапазоне подходящих чисел нет — берём числа дальше.'); break; }
+        }
+        if (firstPool.length) {
+          stepwise.splice(1, 0, `Проверяем по порядку: ${firstPool.join(', ')}${firstPool.length >= 12 ? ', …' : ''}`);
+        }
+        stepwise.push(`Первое, что выдержало все проверки — ${n0Natural}.`);
+
+        // --- способ 3: подбор с шагом НОК --------------------------------
+        const byLcm = [
+          `Все решения повторяются через ${L} — это наименьшее общее кратное чисел ${conds.map((c) => c.m).join(', ')}.`,
+          `Проверяем ${n0Natural}, ${n0Natural + L}, ${n0Natural + 2 * L}, … — каждое подходит.`,
+          `Поэтому ответ: ${n0Natural} + ${L}k, k = 0, 1, 2, …`,
+          `Наименьшее натуральное — ${n0Natural}.`,
+        ];
+
+        const answer = `${n0Natural}`;
+        return {
+          answer, unit: '',
+          steps: [
+            `Условия: ${conds.map((c) => `n ÷ ${c.m} даёт остаток ${c.r}`).join('; ')}.`,
+            `Способ 1 — перебор: проверяем 1, 2, 3, … и сверяем все остатки сразу.`,
+            ...brute.map((b) => `${b}`),
+            `Вывод: наименьшее натуральное число — ${n0Natural}.`,
+          ],
+          checks: checks.map((c) => ({
+            title: `Деление на ${c.m}`,
+            ok: c.ok,
+            detail: `${n0Natural} ÷ ${c.m} = ${fmt(c.q)} (остаток ${fmt(c.r)})${c.ok ? ' — совпало' : `, нужно было ${c.r}`}. Обратно: ${c.back}.`,
+          })),
+          variants: [
+            { title: 'Способ 1. Перебор чисел подряд', note: 'самый понятный', steps: brute },
+            { title: 'Способ 2. По первому условию с шагом', note: 'быстрее перебора', steps: stepwise },
+            { title: 'Способ 3. Через период (НОК)', note: 'видно все решения', steps: byLcm },
+          ],
+          notes: [
+            `Все решения: ${n0Natural} + ${L}k — при k = 1 получится ${n0Natural + L}, при k = 2 — ${n0Natural + 2 * L}.`,
+            allOk ? `Проверка пройдена: остатки в точности ${conds.map((c) => c.r).join(', ')}.` : 'Проверка не сошлась — уточните условие.',
+            'Каждое решение задачи про остатки можно проверить обратным действием: делитель · неполное частное + остаток = исходное число.',
+          ],
+          variantsNote: 'Все способы дают одно и то же число — выбирайте тот, который понятнее.',
+        };
+      },
+    });
+  },
+});
+
 /* ---- 32. Пропорция ---- */
 addRule({
   id: 'proportion_solve', name: 'Решение пропорции a : b = c : x',
@@ -1385,7 +1527,7 @@ addRule({
         `известно: ${Object.entries(inputs).map(([k, v]) => `${k} = ${fmt(v)}`).join(', ')}`,
         askTime ? 'вопрос «за сколько» → ищем время' : askRate ? 'вопрос «сколько в час/день» → ищем производительность' : 'вопрос о количестве изделий → ищем работу'],
       inputs, unknown,
-      formulaIds: ['price_total', 'direct_prop'],
+      formulaIds: ['work_total', 'price_total', 'direct_prop'],
       compute: (v) => {
         const val = answerFn(v);
         const unit = unknown === 't' ? timeUnit : unknown === 'p' ? `шт./${timeUnit}` : 'шт.';
@@ -1590,6 +1732,47 @@ addRule({
 /* ======================================================================
  * ГЛАВНАЯ ФУНКЦИЯ
  * ====================================================================== */
+/* ------------------------------------------------- проверка ответа
+ * Универсальный приём: берём формулу, по которой решали, подставляем в неё
+ * найденный ответ и все известные числа из условия — левая и правая части
+ * должны совпасть. Это работает для любой задачи, а не только для остатков.
+ * ---------------------------------------------------------------------- */
+function verifyByFormula(formulaIds, inputs, answer) {
+  // «60 км/ч», «90 см²», «1,08 км» → 60, 90, 1.08
+  const m = String(answer).replace(/\s/g, '').match(/-?\d+(?:[.,]\d+)?/);
+  if (!m) return null;
+  const num = Number(m[0].replace(',', '.'));
+  if (!Number.isFinite(num)) return null;
+  const given = inputs || {};
+  for (const id of formulaIds || []) {
+    const f = FORMULA_BY_ID.get(id);
+    if (!f || !f.eq) continue;
+    const [L, R] = f.eq.split('=');
+    const vars = f.vars || [];
+    // Известные из условия: те, что пришли числом. Пустые/null — это искомая.
+    const scope = {};
+    const unknownVars = [];
+    for (const v of vars) {
+      const val = given[v.name];
+      if (typeof val === 'number' && Number.isFinite(val)) scope[v.name] = val;
+      else unknownVars.push(v);
+    }
+    if (unknownVars.length !== 1) continue;      // формула должна давать ровно один ответ
+    scope[unknownVars[0].name] = num;
+    try {
+      const l = evaluate(L, scope), r = evaluate(R, scope);
+      if (!Number.isFinite(l) || !Number.isFinite(r)) continue;
+      if (Math.abs(l - r) > 1e-6 * (1 + Math.abs(l) + Math.abs(r))) continue; // не та формула
+      return {
+        title: `Проверка по формуле «${f.display}»`,
+        ok: true,
+        detail: `Подставили ответ и данные: слева ${fmt(l)}, справа ${fmt(r)} — совпало.`,
+      };
+    } catch { /* пробуем следующую формулу */ }
+  }
+  return null;
+}
+
 export function solveTask(raw, options = {}) {
   const ctx = makeContext(raw);
   const attempts = [];
@@ -1675,6 +1858,14 @@ export function solveTask(raw, options = {}) {
     answer: main.answer,
     unit: main.unit || '',
     steps: main.steps || [],
+    // Проверка ответа и альтернативные способы решения (если шаблон их дал).
+    checks: (() => {
+      if (main.checks?.length) return main.checks;
+      const auto = verifyByFormula(best.formulaIds, inputs, main.answer);
+      return auto ? [auto] : [];
+    })(),
+    variants: main.variants || [],
+    variantsNote: main.variantsNote || '',
     notes: [...(best.notes || []), ...(main.notes || [])],
     formulaIds: best.formulaIds || [],
     related: related.slice(0, 8),

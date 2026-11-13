@@ -256,3 +256,36 @@ footer.site-footer a { color: var(--blue-dark); }
 ::-webkit-scrollbar-thumb:hover { background: #a9bcc6; }
 
 .sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
+
+/* --- проверка ответа --- */
+.check-box {
+  margin-top: 12px; border-radius: 10px; padding: 12px 14px;
+  border: 1px solid var(--line); background: #fbfaf6;
+}
+.check-box.ok { border-color: #b9e2cd; background: #f2faf6; }
+.check-box.warn { border-color: #f0cfae; background: #fdf7f0; }
+.check-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: .95rem; }
+.check-mark {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 19px; height: 19px; border-radius: 50%; font-size: .78rem; font-weight: 700;
+  background: #d8efe1; color: #14795a; flex: none;
+}
+.check-box.warn .check-mark, li.warn > .check-mark { background: #f7e2cd; color: #a3541f; }
+.check-list { list-style: none; margin: 9px 0 0; padding: 0; }
+.check-list li { display: flex; gap: 8px; align-items: flex-start; font-size: .9rem; margin-bottom: 5px; }
+.check-list li:last-child { margin-bottom: 0; }
+
+/* --- варианты решения --- */
+.variant-tabs { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 10px; }
+.variant-tab {
+  font: inherit; font-size: .86rem; cursor: pointer; text-align: left;
+  padding: 7px 12px; border-radius: 9px; border: 1px solid var(--line);
+  background: #fff; color: var(--ink); line-height: 1.25;
+}
+.variant-tab span { display: block; font-size: .72rem; color: var(--ink-soft); margin-top: 2px; }
+.variant-tab:hover { border-color: var(--blue); }
+.variant-tab.active {
+  border-color: var(--blue); background: var(--blue-soft); color: var(--blue-dark); font-weight: 600;
+}
+.variant-body { display: none; }
+.variant-body.active { display: block; }

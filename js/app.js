@@ -33,6 +33,15 @@ tabs.forEach((t) => t.addEventListener('click', () => selectTab(t.id.replace('ta
 const state = { chapter: 'all', query: '', selected: null, values: {}, unknown: null };
 
 $('#stat-formulas').textContent = String(STATS.total);
+// счётчики в тексте считаем из данных, чтобы они не расходились с каталогом
+{
+  const intro = $('#detail-intro');
+  if (intro) {
+    intro.textContent = `Слева — полный свод учебника: ${STATS.kinds.formula} формул с вычислением, `
+      + `${STATS.kinds.identity} тождеств с проверкой, ${STATS.kinds.rule} правил-подсказок `
+      + `и ${STATS.kinds.interval} числовых промежутков с рисунками. Всего ${STATS.total} карточек.`;
+  }
+}
 $('#stat-rules').textContent = String(RULE_COUNT);
 $('#badge-formulas').textContent = String(STATS.total);
 $('#badge-rules').textContent = String(RULE_COUNT);
@@ -84,7 +93,8 @@ function selectFormula(id) {
   if (!f) return;
   state.values = {};
   for (const v of f.vars) if (v.def !== null) state.values[v.name] = v.def;
-  state.unknown = f.find || f.vars[0]?.name || null;
+  // «найти» — это цель задачи: может быть и вычисляемой величиной (НОК)
+  state.unknown = f.find || f.vars.find((v) => !isDerivedVar(v.name))?.name || null;
   renderFormulaList();
   renderDetail();
   document.querySelector('.layout-2')?.scrollIntoView({ block: 'nearest' });
@@ -126,6 +136,10 @@ function renderDetail() {
   bindDetail(f);
 }
 
+/** Переменные, которые ядро считает само (НОД/НОК) — их не вводят руками. */
+const DERIVED = new Set(['g', 'G', 'N', 'nok', 'nod']);
+const isDerivedVar = (name) => DERIVED.has(name);
+
 /* ---- карточка формулы с калькулятором ---- */
 function renderFormulaCalculator(f) {
   const varsHtml = f.vars.map((v) => {
@@ -137,7 +151,8 @@ function renderFormulaCalculator(f) {
         ${v.unit ? `<span class="unit">${esc(v.unit)}</span>` : ''}
       </label>
       <input type="text" id="var-${f.id}-${v.name}" data-var="${v.name}" value="${esc(val)}"
-             placeholder="${isUnknown ? 'ищем это значение' : 'число'}" ${isUnknown ? 'disabled' : ''}
+             placeholder="${isUnknown ? 'ищем это значение' : isDerivedVar(v.name) ? 'посчитается само' : 'число'}"
+             ${isUnknown || isDerivedVar(v.name) ? 'disabled' : ''}
              inputmode="decimal" autocomplete="off">
     </div>`;
   }).join('');
@@ -260,6 +275,8 @@ function doAction(f, act) {
     for (const v of f.vars) if (v.name !== unknown) {
       const val = state.values[v.name];
       if (val === null || val === undefined) {
+        // вычисляемые величины (НОД/НОК) не спрашиваем — их считает ядро
+        if (isDerivedVar(v.name)) continue;
         out.innerHTML = `<div class="err">Заполните значение <b>${esc(v.name)}</b> (${esc(v.label)}). Или выберите другую неизвестную.</div>`;
         return;
       }
@@ -367,10 +384,38 @@ function renderTask(sol) {
     <p class="result-value">${esc(sol.answer)}</p>
   </div>`;
 
+  // Проверка ответа: подставляем найденное число обратно в условие.
+  if (sol.checks?.length) {
+    const allOk = sol.checks.every((c) => c.ok);
+    html += `<div class="check-box ${allOk ? 'ok' : 'warn'}">
+      <div class="check-head">
+        <span class="check-mark">${allOk ? '✓' : '!'}</span>
+        <b>Проверка ответа</b>
+        <span class="hint">${allOk ? 'все условия выполнены' : 'не все условия сошлись'}</span>
+      </div>
+      <ul class="check-list">
+        ${sol.checks.map((c) => `<li class="${c.ok ? 'ok' : 'warn'}">
+          <span class="check-mark">${c.ok ? '✓' : '✗'}</span>
+          <span><b>${esc(c.title)}.</b> ${esc(c.detail)}</span>
+        </li>`).join('')}
+      </ul>
+    </div>`;
+  }
+
   if (sol.draw) html += `<div class="figure">${sol.draw}</div>`;
 
   if (sol.steps?.length) {
     html += `<div class="section-label">Решение по шагам</div><ol class="steps">${sol.steps.map((s) => `<li>${esc(s)}</li>`).join('')}</ol>`;
+  }
+
+  // Несколько способов решения одного и того же — с переключателем.
+  if (sol.variants?.length) {
+    html += `<div class="section-label">Другие способы решения</div>`;
+    if (sol.variantsNote) html += `<p class="hint" style="margin:-2px 0 8px">${esc(sol.variantsNote)}</p>`;
+    html += `<div class="variant-tabs" role="tablist">${sol.variants.map((v, i) =>
+      `<button class="variant-tab${i === 0 ? ' active' : ''}" data-variant="${i}" role="tab" aria-selected="${i === 0}">${esc(v.title)}${v.note ? `<span>${esc(v.note)}</span>` : ''}</button>`).join('')}</div>`;
+    html += sol.variants.map((v, i) =>
+      `<ol class="steps variant-body${i === 0 ? ' active' : ''}" data-variant-body="${i}">${v.steps.map((st) => `<li>${esc(st)}</li>`).join('')}</ol>`).join('');
   }
   if (sol.notes?.length) {
     html += `<div class="section-label">Замечания</div><ul class="notes">${sol.notes.map((s) => `<li>${esc(s)}</li>`).join('')}</ul>`;
@@ -415,6 +460,17 @@ function renderTask(sol) {
   }
 
   taskResult.innerHTML = html;
+
+  // переключатель способов решения
+  $$('[data-variant]', taskResult).forEach((btn) => btn.addEventListener('click', () => {
+    const idx = btn.dataset.variant;
+    $$('[data-variant]', taskResult).forEach((b) => {
+      const on = b.dataset.variant === idx;
+      b.classList.toggle('active', on);
+      b.setAttribute('aria-selected', String(on));
+    });
+    $$('[data-variant-body]', taskResult).forEach((b) => b.classList.toggle('active', b.dataset.variantBody === idx));
+  }));
 
   // живые инпуты «а что если»
   $$('[data-whatif]', taskResult).forEach((inp) => {

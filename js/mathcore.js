@@ -71,6 +71,32 @@ export const gcd = (a, b) => {
 };
 export const lcm = (a, b) => Math.abs(Math.round(a) * Math.round(b)) / gcd(a, b);
 
+/**
+ * Переменные, которые не вводятся руками, а вычисляются из других.
+ * Нужны, чтобы «НОК(a, b)» считался сам: пользователь вводит только a и b.
+ */
+const DERIVED_VARS = {
+  g: (s) => gcd(s.a, s.b),                       // НОД(a, b)
+  G: (s) => gcd(s.a, s.b),
+  N: (s) => lcm(s.a, s.b),                       // НОК(a, b)
+  nok: (s) => lcm(s.a, s.b),
+  nod: (s) => gcd(s.a, s.b),
+};
+
+/** Дополняет набор значений вычисляемыми переменными (если их можно посчитать). */
+export function withDerived(scope = {}) {
+  const out = { ...scope };
+  for (const [name, fn] of Object.entries(DERIVED_VARS)) {
+    if (out[name] !== null && out[name] !== undefined) continue;
+    try {
+      const v = fn(out);
+      if (Number.isFinite(v)) out[name] = v;
+    } catch { /* не хватает данных — оставляем как есть */ }
+  }
+  return out;
+}
+
+
 export function primeFactors(n) {
   n = Math.abs(Math.round(n));
   const out = [];
@@ -853,7 +879,8 @@ function pairFactor(pair) {
 /** Найти неизвестную переменную в формуле L = R при известных остальных. */
 export function solveFormula(eq, unknown, known = {}, domain = null, scopeExtra = {}) {
   const [L, R] = splitEquation(eq);
-  const scope = { ...known, ...scopeExtra };
+  // вычисляемые величины (НОД/НОК) подставляем сами — их не вводят руками
+  const scope = withDerived({ ...known, ...scopeExtra });
   const f = (x) => {
     try { return evaluate(L, { ...scope, [unknown]: x }) - evaluate(R, { ...scope, [unknown]: x }); }
     catch { return NaN; }
