@@ -10,6 +10,8 @@ import {
   factorizationString, preprocess,
 } from './mathcore.js';
 import { FORMULAS, FORMULA_BY_ID, formulaSearch } from './formulas.js';
+import { predictFamily } from './dispatcher.js';
+import { FAMILY_BY_RULE } from './families.js';
 import { parseInterval, describeInterval, numberLineSVG, intersect, union } from './intervals.js';
 
 /* ------------------------------------------------------------------ примеры */
@@ -77,6 +79,7 @@ function classifyUnit(word) {
   if (/^(т|тонн)/.test(w)) return 't';
   if (/^(год|лет)/.test(w)) return 'year';
   if (/^(ч|час)/.test(w)) return 'h';
+  if (/^страниц/.test(w)) return 'items';         // до «с»: «страниц» начинается с «с»
   if (/^(с|сек)/.test(w)) return 'sec';
   if (/^(р|руб)/.test(w)) return 'rub';
   if (/^га\b/.test(w)) return 'ha';
@@ -1284,6 +1287,8 @@ addRule({
   id: 'percent_of', name: 'Нахождение процентов от числа',
   run(ctx) {
     if (!ctx.has(/%|процент/)) return null;
+    // «сколько осталось» — это остаток, его считает отдельный шаблон
+    if (ctx.qHas(/остал|останется/)) return null;
     const explicit = ctx.has(/(%\s*от|процент\w*\s+от|найдите\s+\d+[.,]?\d*\s*%|каков\w*\s+\d+[.,]?\d*\s*%|составляет\s+\d+[.,]?\d*\s*%|содержится\s+\d+[.,]?\d*\s*%)/);
     // «200 деталей, 5 процентов бракованных — сколько бракованных?»
     // Здесь нет слова «от», но проценты относятся к общему числу.
@@ -2077,7 +2082,13 @@ addRule({
 addRule({
   id: 'points_distance', name: 'Расстояние между точками координатной прямой',
   run(ctx) {
-    if (!ctx.has(/(расстояние между точками|координатной прямой|середин[аы] отрезк|A\(|B\()/)) return null;
+    // «координатная прямая» сама по себе — это ещё не задача про расстояние:
+    // так же начинаются промежутки. Нужен явный признак расстояния/середины/точек.
+    if (!ctx.has(/расстояние между точками|середин[аы] отрезк/)) {
+      const hasPair = /A\s*\(\s*-?\d/.test(ctx.raw) && /B\s*\(\s*-?\d/.test(ctx.raw);
+      if (!hasPair) return null;
+    }
+    if (!ctx.qHas(/расстояни|длин[ауы] отрезк|середин|найдите\s+AB|чему равен AB/)) return null;
     const pts = [...ctx.raw.matchAll(/([A-Za-zА-Яа-я])\s*\(\s*(-?\d+(?:[.,]\d+)?)\s*\)/g)]
       .map((m) => Number(m[2].replace(',', '.')));
     let a = pts[0], b = pts[1];
@@ -2362,16 +2373,161 @@ addRule({
 
 /* ---- 42. Простые текстовые задачи «на … больше, всего …» ---- */
 addRule({
+  id: 'times_more', name: 'В N раз больше / меньше',
+  run(ctx) {
+    const m = String(ctx.text).match(/(?:в|у)\s+(\d+(?:[.,]\d+)?)\s*раз[а-яё]*\s*(больше|меньше)/i)
+      || String(ctx.text).match(/(?:в)\s+(\d+(?:[.,]\d+)?)\s*раз[а-яё]*/i);
+    if (!m) return null;
+    if (ctx.has(/площад|объём|объем|радиус|сторон.*квадрат/)) return null;  // это «изменение в N раз»
+    const k = Number(m[1].replace(',', '.'));
+    if (!Number.isFinite(k) || k <= 0) return null;
+    const less = /меньше/.test(m[2] || '');
+    // «сколько у обоих / всего вместе» — после умножения их складывают
+    const askBoth = ctx.qHas(/у обоих|вместе|всего|оба/);
+    const base = ctx.numClosest('конфет|яблок|рубл|штук|книг|марок|гриб|мяч|цвет|лет|человек|ученик|детал|ягод|карандаш|открытк', ['items', '']) ?? ctx.values('')[0];
+    if (!Number.isFinite(base)) return null;
+    const res = less ? base / k : base * k;
+    return buildResult(21, {
+      matched: `В ${fmt(k)} раза ${less ? 'меньше' : 'больше'}: ${less ? '÷' : '·'} ${fmt(k)}`,
+      why: [`есть оборот «в ${fmt(k)} раз(а) ${less ? 'меньше' : 'больше'}»`, `опорное число ${fmt(base)}`],
+      inputs: { a: base, k }, unknown: 'b',
+      formulaIds: [],
+      compute: (v) => {
+        const a = numOr(v.a, base), kk = numOr(v.k, k);
+        const r = less ? a / kk : a * kk;
+        const rr = Math.round(r * 100) / 100;
+        const acts = [
+          { what: less ? `Делим на ${fmt(kk)}` : `Умножаем на ${fmt(kk)}`, calc: less ? `${fmt(a)} / ${fmt(kk)} = ${fmt(rr)}` : `${fmt(a)} · ${fmt(kk)} = ${fmt(rr)}` },
+        ];
+        if (askBoth) {
+          acts.push({ what: 'Складываем обоих', calc: `${fmt(a)} + ${fmt(rr)} = ${fmt(Math.round((a + rr) * 100) / 100)}` });
+          return { answer: `${fmt(Math.round((a + rr) * 100) / 100)}`, unit: '', steps: acts };
+        }
+        acts.push({ what: 'Проверка', calc: less ? `${fmt(rr)} · ${fmt(kk)} = ${fmt(a)}` : `${fmt(rr)} / ${fmt(kk)} = ${fmt(a)}` });
+        return { answer: `${fmt(rr)}`, unit: '', steps: acts };
+      },
+    });
+  },
+});
+
+addRule({
+  id: 'part_left', name: 'Взяли часть — сколько осталось',
+  run(ctx) {
+    if (!ctx.qHas(/остал|остал[а-яё]*|останется/)) return null;
+    const tbl = { 'половину': 1 / 2, 'треть': 1 / 3, 'четверть': 1 / 4, 'пятую': 1 / 5, 'десятую': 1 / 10 };
+    const word = Object.keys(tbl).find((w) => new RegExp(w).test(ctx.text));
+    const frac = String(ctx.text).match(/(\d+)\s*\/\s*(\d+)/);
+    const pctVal = ctx.byUnit('pct')[0];
+    let whole = ctx.numClosest('страниц|пирожк|яблок|конфет|рубл|деталей|кг|метров|литров|ученик|км', ['items', 'kg', 'rub', 'km', 'm', '']) ?? ctx.values('').find((v) => v > 10);
+    if (!Number.isFinite(whole)) return null;
+
+    let part, partText;
+    if (word) { part = whole * tbl[word]; partText = `${word} от ${fmt(whole)}`; }
+    else if (frac) { const a = Number(frac[1]), b = Number(frac[2]); part = whole * a / b; partText = `${a}/${b} от ${fmt(whole)}`; }
+    else if (Number.isFinite(pctVal)) { part = whole * pctVal / 100; partText = `${fmt(pctVal)}% от ${fmt(whole)}`; }
+    else return null;
+
+    const left = whole - part;
+    return buildResult(30, {
+      matched: 'Сначала сколько взяли, потом сколько осталось',
+      why: [`целое ${fmt(whole)}`, `взяли: ${partText}`, 'спрашивают, сколько осталось'],
+      inputs: { whole, part }, unknown: 'left',
+      formulaIds: [],
+      compute: (v) => {
+        const w = numOr(v.whole, whole), p = numOr(v.part, part);
+        const l = w - p;
+        return {
+          answer: `${fmt(Math.round(l * 100) / 100)}`, unit: '',
+          steps: [
+            { what: 'Сколько взяли', calc: `${partText} = ${fmt(Math.round(p * 100) / 100)}` },
+            { what: 'Сколько осталось', calc: `${fmt(w)} − ${fmt(Math.round(p * 100) / 100)} = ${fmt(Math.round(l * 100) / 100)}` },
+            { what: 'Проверка', calc: `${fmt(Math.round(p * 100) / 100)} + ${fmt(Math.round(l * 100) / 100)} = ${fmt(w)}` },
+          ],
+        };
+      },
+    });
+  },
+});
+
+addRule({
+  id: 'divide_parts', name: 'Разделили на равные части',
+  run(ctx) {
+    if (!ctx.has(/разделил|разрезал|разбил|поделил/)) return null;
+    if (!ctx.qHas(/каждая|каждую|одна часть|чему равна/)) return null;
+    const nums = ctx.nums.filter((n) => !['pct'].includes(n.unit));
+    if (nums.length < 2) return null;
+    const whole = nums[0], parts = nums[1];
+    if (!(parts.v > 1)) return null;
+    const part = whole.v / parts.v;
+    return buildResult(24, {
+      matched: 'Целое делим на равные части',
+      why: [`целое ${fmt(whole.v)}`, `частей ${fmt(parts.v)}`],
+      inputs: { whole: whole.v, parts: parts.v }, unknown: 'part',
+      formulaIds: [],
+      compute: (v) => {
+        const w = numOr(v.whole, whole.v), n = numOr(v.parts, parts.v);
+        const p = w / n;
+        return {
+          answer: `${fmt(Math.round(p * 1000) / 1000)}`, unit: '',
+          steps: [
+            { what: 'Делим на равные части', calc: `${fmt(w)} / ${fmt(n)} = ${fmt(Math.round(p * 1000) / 1000)}` },
+            { what: 'Проверка', calc: `${fmt(Math.round(p * 1000) / 1000)} · ${fmt(n)} = ${fmt(w)}` },
+          ],
+        };
+      },
+    });
+  },
+});
+
+addRule({
+  id: 'number_by_percent', name: 'Число по его процентам',
+  run(ctx) {
+    if (!ctx.has(/процент/)) return null;
+    if (!ctx.has(/(котор\w*\s+равн|составля\w*|если\s+\d+\s*%|процент\w*\s+котор|процент\w*[^.]{0,20}равн)/)) return null;
+    if (ctx.has(/\d+\s*%\s*от/)) return null;
+    const pctVal = ctx.byUnit('pct')[0];
+    if (!Number.isFinite(pctVal)) return null;
+    const val = ctx.nums.find((n) => n.unit !== 'pct')?.v;
+    if (!Number.isFinite(val)) return null;
+    return buildResult(26, {
+      matched: 'Число по его процентам: целое = часть · 100 / p',
+      why: [`известно ${fmt(pctVal)}%`, `эта часть равна ${fmt(val)}`],
+      inputs: { part: val, percent: pctVal }, unknown: 'whole',
+      formulaIds: ['percent_of'],
+      compute: (v) => {
+        const part = numOr(v.part, val), p = numOr(v.percent, pctVal);
+        const w = part * 100 / p;
+        return {
+          answer: `${fmt(Math.round(w * 100) / 100)}`, unit: '',
+          steps: [
+            { what: 'Один процент', calc: `${fmt(part)} / ${fmt(p)} = ${fmt(Math.round(part / p * 100) / 100)}` },
+            { what: 'Всё число (100%)', calc: `${fmt(Math.round(part / p * 100) / 100)} · 100 = ${fmt(Math.round(w * 100) / 100)}` },
+            { what: 'Проверка', calc: `${fmt(p)}% от ${fmt(Math.round(w * 100) / 100)} = ${fmt(Math.round(w * p / 100 * 100) / 100)}` },
+          ],
+        };
+      },
+    });
+  },
+});
+
+addRule({
   id: 'word_two_parts', name: 'Две части с условием «на … больше» и «всего …»',
   run(ctx) {
-    if (!ctx.has(/(на \d+.*больше|на \d+.*меньше|в \d+.*раза.*больше|всего|вместе)/)) return null;
+    // Нужна СУММА двух частей и их разница «на N больше/меньше».
+    if (!ctx.has(/(на \d+[^.]{0,20}(больше|меньше)|разность)/)) return null;
+    const hasTotal = ctx.has(/всего|вместе|отведено|сумма двух|общая|оказалось/) || /\d+\s*(га|кг|яблок|учеников|рубл)/.test(ctx.text);
+    if (!hasTotal) return null;
+    // «у Маши 5 конфет, у Пети в 3 раза больше. Сколько у обоих?» — это про умножение
+    if (/в\s+\d+(?:[.,]\d+)?\s*раз[а-яё]*\s+(?:больше|меньше)/.test(ctx.text) && !/на\s+\d+(?:[.,]\d+)?\s*(?:больше|меньше)/.test(ctx.text)) return null;
     // Это задача о совместной работе («за сколько вдвоём») — её берёт другое правило
     if (ctx.has(/за сколько|через сколько|труб|бассейн|насос|кран.*разгруж|разгруз|экскаватор|вспаш|выкоп|покрас/)) return null;
     const nums = ctx.values('').filter((v) => v > 0);
     if (nums.length < 2) return null;
-    const total = ctx.numNear(['всего', 'вместе', 'составило', 'было продано'], ['']) ?? nums[nums.length - 1];
-    const diff = ctx.numNear(['на'], ['']) ?? nums.find((v) => v !== total);
-    if (total == null || diff == null) return null;
+    // Разница — число, которое стоит прямо перед «больше/меньше» («на 6 больше»).
+    const diff = ctx.numClosest('больше|меньше|разность', [''])
+      ?? ctx.numNear(['на'], ['']) ?? nums[nums.length - 1];
+    const total = nums.find((v) => v !== diff) ?? null;
+    if (total == null || diff == null || total <= diff) return null;
     const times = ctx.has(/в [\d.]+ раза/);
     const k = times ? Number(ctx.text.match(/в ([\d.]+) раза/)[1]) : null;
     return buildResult(12, {
@@ -2528,6 +2684,20 @@ export function solveTask(raw, options = {}) {
       attempts.push({ id: rule.id, name: rule.name, score: -1, error: e.message });
     }
   }
+  // ---- Подсказка крошечной модели-диспетчера ----
+  // Она НЕ считает ответ и НЕ перебивает парсер: только добавляет баллы тем
+  // шаблонам, которые относятся к угаданному семейству. Если модель ошиблась,
+  // парсер всё равно выберет то, что лучше совпало по словам и единицам.
+  let hint = null;
+  try {
+    hint = predictFamily(raw);
+    if (hint && hint.p >= 0.45) {
+      for (const a of attempts) {
+        if (FAMILY_BY_RULE[a.id] === hint.family) a.score += 4 + Math.round(hint.p * 4);
+      }
+    }
+  } catch { hint = null; }
+
   attempts.sort((a, b) => b.score - a.score);
   const best = attempts.find((a) => a.score > 0 && a.compute);
 
@@ -2596,6 +2766,7 @@ export function solveTask(raw, options = {}) {
   return {
     ...base,
     bestId: best.id,
+    hint: hint && hint.p >= 0.45 ? { family: hint.family, p: hint.p, top: hint.top } : null,
     sanity,
     pattern: best.name,
     matched: best.matched,

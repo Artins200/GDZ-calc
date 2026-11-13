@@ -468,6 +468,20 @@ function runTask() {
   renderTask(solveTask(text));
 }
 
+// Человеческие названия семейств для подсказки модели.
+const FAMILY_LABEL = {
+  motion: 'движение', meeting: 'встречное движение', catchup: 'догон',
+  motion_after: 'путь за следующие часы', average: 'средняя скорость',
+  work: 'совместная работа', guess: 'задуманное число', percent: 'проценты',
+  proportion: 'пропорция', scaling: 'изменение в N раз', area: 'площадь',
+  volume: 'объём', coords: 'координатная прямая', graph: 'графики функций',
+  equation: 'уравнение', algebra: 'преобразование выражения', expr: 'вычисление',
+  divisibility: 'НОД и НОК', remainder: 'остатки', mixture: 'смеси',
+  density: 'плотность', price: 'цена', paint: 'расход на покраску',
+  sound: 'звук', convert: 'перевод единиц', interval: 'числовой промежуток',
+  inequality: 'неравенство', parts: 'две части', steps: 'шаги',
+};
+
 function renderTask(sol) {
   if (!sol.ok) {
     taskResult.innerHTML = `<div class="err">Не получилось распознать задачу. Укажите, что нужно найти: «найдите скорость», «сколько процентов», «решите уравнение».</div>`;
@@ -489,6 +503,12 @@ function renderTask(sol) {
   }
 
   if (sol.draw) html += `<div class="figure">${sol.draw}</div>`;
+
+  // Крошечная модель-диспетчер подсказала тип задачи — показываем это мелко и
+  // только в подробном режиме: на главном экране ничего лишнего.
+  if (SHOW_ALL() && sol.hint?.family && sol.hint.p >= 0.45) {
+    html += `<div class="hint-line">Модель-диспетчер: похоже на «${esc(FAMILY_LABEL[sol.hint.family] || sol.hint.family)}» (${Math.round(sol.hint.p * 100)}%). Числа всё равно считает формула.</div>`;
+  }
 
   // Подробности — по настройке «Ответ».
   if (SHOW_STEPS() && sol.checks?.length) {

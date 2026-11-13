@@ -461,3 +461,11 @@ details.more[open] > summary::before { transform: rotate(90deg); }
 ::-webkit-scrollbar-track { background: transparent; }
 
 .hint-note { margin: 9px 2px 0; line-height: 1.4; }
+
+/* Подсказка модели-диспетчера: мелко, чтобы не отвлекала от ответа. */
+.hint-line {
+  margin: 10px 2px 0;
+  font-size: 12px;
+  line-height: 1.45;
+  color: #6b7482;
+}
