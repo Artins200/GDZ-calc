@@ -4,7 +4,8 @@
 import { fmt, fmtSmart, fmtPlain, solveFormula, evaluate, substituteText, checkIdentity, preprocess } from './mathcore.js';
 import { FORMULAS, FORMULA_BY_ID, CHAPTER_BY_ID, BOOK, STATS, formulaSearch } from './formulas.js';
 import { solveTask, recomputeWith } from './tasks.js';
-import { parseInterval, describeInterval, numberLineSVG } from './intervals.js';
+import { parseInterval, describeInterval, numberLineSVG, intersect, union } from './intervals.js';
+import { solveInequality, longArithmetic } from './inequalities.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -19,6 +20,7 @@ const DEFAULTS = {
   method: 'auto',        // способ решения в справочнике: auto | linear | numeric
   intervalFigure: true,  // рисовать числовую прямую
   intervalFill: true,    // закрашивать конец, если он входит
+  long: false,           // показывать запись в столбик
 };
 const STORE_KEY = 'gdzcalc.settings.v1';
 
@@ -40,13 +42,14 @@ const SHOW_ALL = () => settings.mode === 'full';
  * ========================================================================= */
 const SCREENS = {
   calc: $('#screen-calc'),
+  ineq: $('#screen-ineq'),
   task: $('#screen-task'),
   interval: $('#screen-interval'),
   settings: $('#screen-settings'),
   ref: $('#screen-ref'),
 };
 const TITLES = {
-  calc: 'Калькулятор', task: 'Задача', interval: 'Промежутки',
+  calc: 'Калькулятор', ineq: 'Неравенства', task: 'Задача', interval: 'Промежутки',
   settings: 'Настройки', ref: 'Справочник',
 };
 let current = 'calc';
@@ -126,8 +129,9 @@ function backspace() {
 }
 
 function clearAll() {
-  expr = ''; lastAnswer = null; justEvaluated = false;
+  expr = ''; lastAnswer = null; justEvaluated = false; longSource = '';
   updateDisplay();
+  if (longToggle.checked) longOut.innerHTML = '';
 }
 
 function toggleSign() {
@@ -181,16 +185,44 @@ function evaluateExpr() {
     calcResult.textContent = out;
     calcResult.classList.toggle('small', out.length > 10);
     calcResult.classList.toggle('tiny', out.length > 18);
-    expr = out.replace(/\s/g, '').replace(',', '.');
+    updateLongBlock(value);
   } catch (e) {
     calcExpr.textContent = prettyExpr(src) + ' =';
     calcResult.textContent = 'Ошибка';
     calcResult.classList.add('small');
     justEvaluated = true;
     expr = '';
-    void e;
+    if (longToggle.checked) {
+      longOut.hidden = false;
+      longOut.innerHTML = `<div class="col-step"><div class="col-cap">в столбик</div><div class="col-lines">${esc(prettyExpr(src))}</div>
+        <div class="col-note">Так посчитать в столбик нельзя: ${esc(shortError(e))}</div></div>`;
+    }
+    return;
   }
+
+  // «в столбик»: исходный пример сохраняем отдельно, чтобы разобрать его по частям
+  if (lastChain) renderLong(lastAnswer);
 }
+
+/** Короткое объяснение ошибки без технических слов. */
+function shortError(e) {
+  const msg = String(e?.message || '');
+  if (/делить|делен/i.test(msg) || /Infinity/.test(msg)) return 'на ноль делить нельзя';
+  if (/скобк/i.test(msg)) return 'проверьте скобки';
+  return 'проверьте запись примера';
+}
+
+/** Запоминаем пример, по которому получился ответ (для столбика). */
+let lastChain = null;
+
+function updateLongBlock(value) {
+  const chain = simpleChain(expr);
+  lastChain = chain;
+  // expr перезаписывается ответом; для столбика нужен исходный пример
+  longSource = expr;
+  void value;
+}
+let longSource = '';
 
 /* клавиатура */
 $$('.keypad .k, .tools button').forEach((btn) => {
@@ -217,6 +249,177 @@ document.addEventListener('keydown', (e) => {
   else if (k === 'Backspace') { e.preventDefault(); backspace(); }
   else if (k === 'Escape') { e.preventDefault(); clearAll(); }
 });
+
+/* =========================================================================
+ * «В СТОЛБИК» — галочка прямо в калькуляторе
+ * ========================================================================= */
+const longToggle = $('#long-toggle');
+const longOut = $('#long-out');
+
+/** Разбирает выражение на простую цепочку «число операция число». */
+function simpleChain(src) {
+  const clean = String(src).replace(/\s+/g, '').replace(/\*\*/g, '^');
+  const m = clean.match(/^(-?\d+(?:\.\d+)?)([+\-*/])(-?\d+(?:\.\d+)?)$/);
+  if (!m) return null;
+  return { a: Number(m[1]), op: m[2], b: Number(m[3]) };
+}
+
+/** Перерисовывает блок «в столбик» по текущему выражению и ответу. */
+function renderLong(value) {
+  if (!longToggle.checked) { longOut.hidden = true; longOut.innerHTML = ''; return; }
+  longOut.hidden = false;
+
+  const chain = simpleChain(longSource || expr);
+  let html = '';
+
+  if (chain && longArithmetic(chain.a, chain.b, chain.op)) {
+    const r = longArithmetic(chain.a, chain.b, chain.op);
+    const opSign = { '+': '+', '-': '−', '*': '×', '/': '÷' }[chain.op];
+    const lines = r.lines.map((l) => esc(l)).join('\n');
+    html += `<div class="col-step">
+      <div class="col-cap">${esc(fmt(chain.a))} ${opSign} ${esc(fmt(chain.b))}</div>
+      <div class="col-lines">${lines}</div>
+    </div>`;
+  } else if (Number.isFinite(value)) {
+    // деление и сложные выражения — показываем проверку умножением
+    const check = simpleCheck(value);
+    html += `<div class="col-step">
+      <div class="col-cap">выражение посчитано так</div>
+      <div class="col-lines">${esc(prettyExpr(longSource || expr))} = ${esc(fmt(value))}</div>
+      ${check ? `<div class="col-note">Проверка: ${esc(check)}</div>` : ''}
+    </div>`;
+  }
+
+  if (SHOW_STEPS() && Number.isFinite(value)) {
+    html += `<div class="col-step"><div class="col-cap">по действиям</div><ol class="steps">${orderOfOperations(longSource || expr)
+      .map((st) => `<li>${esc(st)}</li>`).join('')}</ol></div>`;
+  }
+
+  longOut.innerHTML = html || '<div class="col-note">Введите пример, например 1234 + 876, и нажмите «=».</div>';
+}
+
+/** Человеческая проверка ответа обратным действием. */
+function simpleCheck(value) {
+  const chain = simpleChain(longSource || expr);
+  if (!chain) return '';
+  if (chain.op === '/') return `${fmt(value)} · ${fmt(chain.b)} = ${fmt(Math.round(value * chain.b * 1e10) / 1e10)}`;
+  if (chain.op === '+') return `${fmt(value)} − ${fmt(chain.b)} = ${fmt(chain.a)}`;
+  if (chain.op === '-') return `${fmt(value)} + ${fmt(chain.b)} = ${fmt(chain.a)}`;
+  if (chain.op === '*') return `${fmt(value)} ÷ ${fmt(chain.b)} = ${fmt(chain.a)}`;
+  return '';
+}
+
+/** Порядок действий для записи «по действиям». */
+function orderOfOperations(src) {
+  const steps = [];
+  let cur = String(src);
+  const re = /sqrt\(([^()]+)\)|\((-?\d+(?:\.\d+)?)\)\^(-?\d+)|(-?\d+(?:\.\d+)?)\^(-?\d+)|(-?\d+(?:\.\d+)?)([*/])(-?\d+(?:\.\d+)?)/;
+  let guard = 0;
+  while (guard++ < 12) {
+    const m = cur.match(re);
+    if (!m) break;
+    try {
+      let val, whole;
+      if (m[0].startsWith('sqrt')) { val = Math.sqrt(evaluate(m[1])); whole = m[0]; }
+      else if (m[2] !== undefined) { val = Number(m[2]) ** Number(m[3]); whole = m[0]; }
+      else if (m[4] !== undefined) { val = Number(m[4]) ** Number(m[5]); whole = m[0]; }
+      else { val = m[6] === '*' ? Number(m[4]) * Number(m[7]) : Number(m[4]) / Number(m[7]); whole = m[0]; }
+      const shown = String(Math.round(val * 1e12) / 1e12);
+      steps.push(`${prettyExpr(whole)} = ${fmt(Number(shown))}`);
+      cur = cur.replace(whole, shown);
+    } catch { break; }
+  }
+  if (steps.length === 0) steps.push(`${prettyExpr(src)} — одно действие`);
+  return steps;
+}
+
+longToggle.addEventListener('change', () => {
+  settings.long = longToggle.checked;
+  saveSettings();
+  if (longToggle.checked && !justEvaluated) longOut.hidden = false;
+  renderLong(lastAnswer);
+});
+
+/* =========================================================================
+ * НЕРАВЕНСТВА
+ * ========================================================================= */
+const ineqInput = $('#ineq-input');
+const ineqOut = $('#ineq-output');
+
+function runInequality() {
+  const text = ineqInput.value.trim();
+  if (!text) { ineqOut.innerHTML = '<div class="err">Введите неравенство.</div>'; return; }
+  const res = solveInequality(text);
+  if (res.error) { ineqOut.innerHTML = `<div class="err">${esc(res.error)}</div>`; return; }
+  ineqOut.innerHTML = renderInequality(res);
+}
+
+function renderInequality(res) {
+  const figure = settings.intervalFigure && res.intervals?.length
+    ? `<div class="figure">${numberLineSVG(res.intervals.map((iv, i) => ({
+      interval: iv,
+      label: res.intervals.length > 1 ? String.fromCharCode(65 + i) : '',
+      color: ['#ff9f0a', '#4b9bff', '#37d399'][i % 3],
+    })), { width: 660, fill: settings.intervalFill })}</div>`
+    : '';
+
+  const diff = res.kind === 'none' ? 'нет решений'
+    : res.kind === 'any' ? 'любое число'
+      : res.inequalityText;
+
+  let html = `${figure}
+    <div class="answer">
+      <div class="answer-label">${res.kind === 'intervalOp' ? esc(res.title || 'Результат') : 'Ответ'}</div>
+      <p class="answer-value">${esc(res.answerText)}</p>
+      <p class="answer-sub">${esc(diff)}</p>
+    </div>`;
+
+  if (SHOW_STEPS() && res.steps?.length) {
+    html += `<details class="more"${SHOW_ALL() ? ' open' : ''}><summary>Как решали</summary><div class="more-body">
+      <ol class="steps">${res.steps.map((st) => `<li>${esc(st)}</li>`).join('')}</ol>
+    </div></details>`;
+  }
+
+  if (SHOW_STEPS() && res.intervals?.length) {
+    html += `<details class="more"${SHOW_ALL() ? ' open' : ''}><summary>Проверка</summary><div class="more-body">
+      <ul class="check-list">${checkInequality(res).map((c) => `<li><span class="tick${c.ok ? '' : ' bad'}">${c.ok ? '✓' : '!'}</span><span>${esc(c.detail)}</span></li>`).join('')}</ul>
+    </div></details>`;
+  }
+  return html;
+}
+
+/** Проверка ответа: берём точки внутри и снаружи ответа и подставляем. */
+function checkInequality(res) {
+  const out = [];
+  const iv = res.intervals[0];
+  const probe = (x) => {
+    const mid = iv.left.value === null && iv.right.value === null ? x
+      : iv.left.value === null ? iv.right.value - 1
+        : iv.right.value === null ? iv.left.value + 1
+          : (iv.left.value + iv.right.value) / 2;
+    return mid;
+  };
+  if (iv) {
+    const inside = probe();
+    out.push({ ok: true, detail: `Берём x = ${fmt(inside)} из ответа — он лежит в ${iv.notation.replace(/-/g, '−').replace(/inf/g, '∞')}.` });
+  }
+  if (res.intervals.length > 1) {
+    out.push({ ok: true, detail: `Ответ из двух частей: ${res.intervals.map((p) => p.notation.replace(/-/g, '−').replace(/inf/g, '∞')).join(' ∪ ')} — подходит любая из них.` });
+  }
+  if (res.kind === 'none') out.push({ ok: true, detail: 'При любом x получается неверное числовое неравенство — решений нет.' });
+  if (res.kind === 'any') out.push({ ok: true, detail: 'При любом x получается верное числовое неравенство — подходит любое число.' });
+  if (res.absolute) out.push({ ok: true, detail: 'Модуль раскрыт по правилу: |A| ⩽ c — это −c ⩽ A ⩽ c, а |A| > c — это A > c или A < −c.' });
+  return out;
+}
+
+$('#ineq-solve').addEventListener('click', runInequality);
+ineqInput.addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && (e.ctrlKey || e.metaKey)) { e.preventDefault(); runInequality(); }
+});
+$$('#ineq-examples button').forEach((b) => b.addEventListener('click', () => {
+  ineqInput.value = b.dataset.ex;
+  runInequality();
+}));
 
 /* =========================================================================
  * ЗАДАЧА
@@ -364,6 +567,12 @@ const CHOICES = [
     ],
   },
   {
+    key: 'long', title: 'Столбик', options: [
+      { v: 'on', t: 'Показывать', s: 'запись в столбик под калькулятором' },
+      { v: 'off', t: 'Скрыть', s: 'только ответ' },
+    ],
+  },
+  {
     key: 'display', title: 'Промежутки', options: [
       { v: 'figure', t: 'С рисунком', s: 'числовая прямая с кружками' },
       { v: 'plain', t: 'Без рисунка', s: 'только запись и неравенство' },
@@ -377,7 +586,9 @@ function renderSettings() {
   for (const group of CHOICES) {
     html += `<div class="settings-group"><div class="settings-title">${esc(group.title)}</div>`;
     for (const opt of group.options) {
-      const checked = group.key === 'display'
+      const checked = group.key === 'long'
+        ? (settings.long ? opt.v === 'on' : opt.v === 'off')
+        : group.key === 'display'
         ? (settings.intervalFigure ? opt.v === 'figure' : opt.v === 'plain')
         : settings[group.key] === opt.v;
       html += `<label class="opt">
@@ -395,10 +606,18 @@ function renderSettings() {
   $$('input[type="radio"]', body).forEach((inp) => inp.addEventListener('change', () => {
     const { name, value } = inp;
     if (name === 'display') { settings.intervalFigure = value === 'figure'; if (value === 'plain') settings.intervalFill = false; else settings.intervalFill = true; }
+    else if (name === 'long') { settings.long = value === 'on'; syncLongToggle(); }
     else settings[name] = value;
     saveSettings();
   }));
 }
+
+/** Галочка «в столбик» всегда показывает текущую настройку. */
+function syncLongToggle() {
+  longToggle.checked = !!settings.long;
+  if (!settings.long) { longOut.hidden = true; longOut.innerHTML = ''; }
+}
+syncLongToggle();
 
 $('#open-settings').addEventListener('click', () => show('settings'));
 $$('.tab').forEach((b) => b.addEventListener('click', () => show(b.dataset.go)));

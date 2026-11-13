@@ -88,7 +88,7 @@ mkdir -p "$WORK/res" "$WORK/gen" "$WORK/classes" "$WORK/dex" "$WORK/assets/www"
 cp "$REPO/index.html" "$REPO/styles.css" "$WORK/assets/www/"
 mkdir -p "$WORK/assets/www/js"
 # Копируем только рабочие модули, чтобы в APK не попадали временные файлы тестов.
-for f in app.js mathcore.js formulas.js intervals.js tasks.js; do
+for f in app.js mathcore.js formulas.js intervals.js inequalities.js tasks.js; do
   cp "$REPO/js/$f" "$WORK/assets/www/js/"
 done
 say "assets: $(find "$WORK/assets/www" -type f | wc -l) файлов, $(du -sh "$WORK/assets/www" | cut -f1)"

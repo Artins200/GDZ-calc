@@ -202,9 +202,9 @@ export function numberLineSVG(items, opts = {}) {
     `<path d="M ${x - dir * size} ${y - size * 0.7} L ${x} ${y} L ${x - dir * size} ${y + size * 0.7}" fill="none" stroke="${color}" stroke-width="1.4" stroke-linecap="round" stroke-linejoin="round"/>`;
 
   let out = `<svg viewBox="0 0 ${W} ${H}" xmlns="http://www.w3.org/2000/svg" class="numberline" role="img" aria-label="Изображение числового промежутка на координатной прямой">`;
-  out += `<rect x="0" y="0" width="${W}" height="${H}" fill="#fffdf8" rx="8"/>`;
+  out += `<rect x="0" y="0" width="${W}" height="${H}" fill="${opts.bg || '#12151a'}" rx="8"/>`;
   // ось
-  out += `<line x1="${xPad - 34}" y1="${axisY}" x2="${W - xPad + 30}" y2="${axisY}" stroke="#3c4650" stroke-width="1.3"/>`;
+  out += `<line x1="${xPad - 34}" y1="${axisY}" x2="${W - xPad + 30}" y2="${axisY}" stroke="#59636f" stroke-width="1.3"/>`;
   out += arrow(W - xPad + 30, axisY, 1);
   // числа, которые будут подписаны как концы промежутков — засечки рядом с ними не рисуем
   const ends = [];
@@ -223,9 +223,9 @@ export function numberLineSVG(items, opts = {}) {
   for (let v = start; v <= hi + 1e-9; v += step) {
     const x = X(v);
     if (x < xPad - 20 || x > W - xPad + 18) continue;
-    out += `<line x1="${x}" y1="${axisY - 4}" x2="${x}" y2="${axisY + 4}" stroke="#9aa5ae" stroke-width="1"/>`;
+    out += `<line x1="${x}" y1="${axisY - 4}" x2="${x}" y2="${axisY + 4}" stroke="#7b8693" stroke-width="1"/>`;
     if (nearEnd(v)) continue;
-    out += `<text x="${x}" y="${axisY + 19}" text-anchor="middle" font-size="11" fill="#5b6873" font-family="Georgia, serif">${fmt(v, 4)}</text>`;
+    out += `<text x="${x}" y="${axisY + 19}" text-anchor="middle" font-size="11" fill="#aab4c0" font-family="Georgia, serif">${fmt(v, 4)}</text>`;
   }
 
   items.forEach((it, idx) => {
@@ -244,8 +244,7 @@ export function numberLineSVG(items, opts = {}) {
     const endLabel = (x, v, letter) => {
       const t = letter ? `<tspan font-style="italic">${letter}</tspan>` : fmt(v, 4);
       const w = String(letter || fmt(v, 4)).length * 6.4 + 6;
-      return `<rect x="${x - w / 2}" y="${axisY + 8}" width="${w}" height="15" fill="#fffdf8"/>` +
-        `<text x="${x}" y="${axisY + 20}" text-anchor="middle" font-size="12" fill="#2c343b" font-family="Georgia, serif">${t}</text>`;
+      return `<text x="${x}" y="${axisY + 20}" text-anchor="middle" font-size="12" fill="#e6ebf2" font-family="Georgia, serif">${t}</text>`;
     };
     if (hasL) {
       out += `<line x1="${xl}" y1="${y}" x2="${xl}" y2="${axisY - 5}" stroke="${color}" stroke-width="1.5"/>`;
@@ -272,7 +271,7 @@ export function numberLineSVG(items, opts = {}) {
  */
 function dot(x, y, closed, color, fill = true) {
   if (!closed) {
-    return `<circle cx="${x}" cy="${y}" r="4.6" fill="#fffdf8" stroke="${color}" stroke-width="2"/>`;
+    return `<circle cx="${x}" cy="${y}" r="4.6" fill="#12151a" stroke="${color}" stroke-width="2"/>`;
   }
   if (!fill) {
     return `<circle cx="${x}" cy="${y}" r="4.6" fill="none" stroke="${color}" stroke-width="2"/>`;

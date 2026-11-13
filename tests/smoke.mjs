@@ -7,6 +7,7 @@ import {
 import { FORMULAS, STATS, formulaSearch } from '../js/formulas.js';
 import { parseInterval, intersect, union, numberLineSVG, describeInterval } from '../js/intervals.js';
 import { solveTask, TASK_EXAMPLES, RULE_COUNT, recomputeWith } from '../js/tasks.js';
+import { solveInequality, longArithmetic } from '../js/inequalities.js';
 
 let passed = 0;
 const ok = (name, fn) => {
@@ -346,6 +347,60 @@ ok('НОК и НОД считаются сами (без ввода g)', () => {
 ok('неизвестная задача всё равно даёт подсказки', () => {
   const s = solveTask('Кот съел что-то вкусное и уснул на диване.');
   assert.ok(s.steps.length >= 2);
+});
+
+/* --------------------------------------------------- неравенства */
+ok('неравенства: линейное, двойное, модуль, система, дроби', () => {
+  const cases = [
+    ['3x − 7 < 5x + 1', '(−4; +∞)'],
+    ['−2 ⩽ 4 − 2x ⩽ 6', '[−1; 3]'],
+    ['|x − 2| ⩽ 5', '[−3; 7]'],
+    ['|x − 2| > 5', '(−∞; −3) ∪ (7; +∞)'],
+    ['2x + 1 > 5; 3x − 4 ⩽ 8', '(2; 4]'],
+    ['(x + 3)/2 ⩾ (2x − 1)/3', '(−∞; 11]'],
+    ['5 > x', '(−∞; 5)'],
+  ];
+  for (const [input, expected] of cases) {
+    const r = solveInequality(input);
+    assert.ok(!r.error, `${input}: ${r.error}`);
+    assert.equal(r.answerText, expected, `${input} → ${r.answerText}, ждали ${expected}`);
+    assert.ok(r.steps.length >= 2, `нет шагов: ${input}`);
+  }
+});
+
+ok('неравенства: пересечение, объединение и разность промежутков', () => {
+  const and = solveInequality('A = [−3; 4), B = (1; 7]\nA ∩ B');
+  assert.equal(and.answerText, '(1; 4)');
+  const or = solveInequality('A = [−3; 4), B = (1; 7]\nA ∪ B');
+  assert.equal(or.answerText, '[−3; 7]');
+  const minus = solveInequality('M = (−∞; 3], N = [1; 6)\nM \\ N');
+  assert.equal(minus.answerText, '(−∞; 1)');
+});
+
+ok('неравенства: понимает текст, скопированный из PDF «по буквам»', () => {
+  const pdf = '5. Реши систему неравенств:\n{\n2\nx\n+\n1\n>\n5\n3\nx\n−\n4\n≤\n8';
+  assert.equal(solveInequality(pdf).answerText, '(2; 4]');
+  const one = '3\nx\n−\n7\n<\n5\nx\n+\n1';
+  assert.equal(solveInequality(one).answerText, '(−4; +∞)');
+  const mod = '∣\nx\n−\n2\n∣\n≤\n5';
+  assert.equal(solveInequality(mod).answerText, '[−3; 7]');
+});
+
+ok('неравенства: вырожденные случаи дают понятный ответ', () => {
+  assert.equal(solveInequality('2x + 1 > 2x + 5').kind, 'none');
+  assert.equal(solveInequality('2x + 1 < 2x + 5').kind, 'any');
+  const bad = solveInequality('просто текст');
+  assert.ok(bad.error, 'должна быть ошибка');
+});
+
+ok('столбик: сложение, вычитание и умножение считаются верно', () => {
+  const cases = [[1234, 876, '+', 2110], [500, 137, '-', 363], [47, 36, '*', 1692], [12.5, 4, '*', 50]];
+  for (const [a, b, op, expected] of cases) {
+    const r = longArithmetic(a, b, op);
+    assert.ok(r, `${a} ${op} ${b}: не собралось`);
+    near(r.value, expected);
+    assert.ok(r.lines.length >= 4, `${a} ${op} ${b}: мало строк`);
+  }
 });
 
 console.log(`\nПройдено: ${passed} проверок\n`);
