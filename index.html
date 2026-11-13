@@ -2,169 +2,114 @@
 <html lang="ru">
 <head>
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>GDZ-calc — калькулятор по учебнику «Алгебра 7 класс» (Макарычев)</title>
-<meta name="description" content="Калькулятор по всем формулам учебника алгебры 7 класса Макарычева: формулы, тождества, числовые промежутки с рисунками, парсер текстовых задач с готовым решением.">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5">
+<title>GDZ-calc — калькулятор по алгебре 7 класса</title>
+<meta name="description" content="Калькулятор по учебнику алгебры 7 класса: выберите формулу, введите числа и получите ответ. Плюс решатель текстовых задач и числовые промежутки.">
+<meta name="theme-color" content="#f5f6f8">
 <link rel="stylesheet" href="styles.css">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%230d8bb5'/><text x='16' y='23' font-size='19' text-anchor='middle' fill='white' font-family='Georgia'>∑</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23256bd8'/><text x='16' y='23' font-size='19' text-anchor='middle' fill='white' font-family='Georgia'>∑</text></svg>">
 </head>
 <body>
 
-<header class="site-header">
-  <div class="wrap">
-    <div class="inner">
-      <div class="brand">
-        <div class="brand-mark" aria-hidden="true">∑</div>
-        <div>
-          <h1>GDZ-calc</h1>
-          <small>Математика. Алгебра. 7 класс — Макарычев, Миндюк, Нешков, Суворова (Просвещение, 2024)</small>
-        </div>
-      </div>
-      <div class="hint" style="color:#eaf7fc">
-        <span id="stat-formulas">—</span> формул и правил · <span id="stat-rules">—</span> шаблонов задач
-      </div>
+<div class="app">
+
+  <!-- верхняя строка: название и переключение разделов -->
+  <header class="bar">
+    <div class="bar-title">
+      <span class="logo" aria-hidden="true">∑</span>
+      <h1>GDZ-calc</h1>
     </div>
-    <nav class="tabs" role="tablist" aria-label="Разделы калькулятора">
-      <button class="tab" role="tab" id="tab-formulas" aria-controls="panel-formulas" aria-selected="true">Формулы <span class="badge" id="badge-formulas">0</span></button>
-      <button class="tab" role="tab" id="tab-tasks" aria-controls="panel-tasks" aria-selected="false">Задачи <span class="badge" id="badge-rules">0</span></button>
-      <button class="tab" role="tab" id="tab-intervals" aria-controls="panel-intervals" aria-selected="false">Промежутки</button>
-      <button class="tab" role="tab" id="tab-reference" aria-controls="panel-reference" aria-selected="false">Справка</button>
+    <nav class="seg" role="tablist" aria-label="Разделы">
+      <button class="seg-btn" role="tab" id="tab-formulas" aria-controls="panel-formulas" aria-selected="true" title="Формулы">Формулы</button>
+      <button class="seg-btn" role="tab" id="tab-tasks" aria-controls="panel-tasks" aria-selected="false" title="Решение задач">Задачи</button>
+      <button class="seg-btn" role="tab" id="tab-intervals" aria-controls="panel-intervals" aria-selected="false" title="Промежутки">Промежутки</button>
     </nav>
-  </div>
-</header>
+  </header>
 
-<main class="wrap">
+  <main>
 
-  <!-- ============================ ФОРМУЛЫ ============================ -->
-  <section class="panel active" id="panel-formulas" role="tabpanel" aria-labelledby="tab-formulas">
-    <div class="panel-head">
-      <div>
-        <h2>Все формулы учебника</h2>
-        <p>Каждая карточка сверена с текстом PDF: глава, параграф и страница. Введите свои значения — калькулятор подставит их, покажет шаги и решит формулу относительно любой переменной.</p>
-      </div>
-    </div>
+    <!-- ============================== ФОРМУЛЫ ============================== -->
+    <section class="panel active" id="panel-formulas" role="tabpanel" aria-labelledby="tab-formulas">
 
-    <div class="layout-2">
-      <div>
-        <div class="search-bar">
-          <input type="text" id="formula-search" placeholder="Поиск: квадрат суммы, проценты, км/ч, промежуток…" autocomplete="off" aria-label="Поиск по формулам">
+      <div class="picker">
+        <div class="search">
+          <input type="text" id="formula-search" placeholder="Найти формулу" autocomplete="off" aria-label="Поиск формулы">
+          <button class="search-clear" id="search-clear" type="button" aria-label="Очистить">×</button>
         </div>
-        <div class="chapter-list" id="chapter-filter" role="group" aria-label="Фильтр по главам"></div>
+        <div class="chapters" id="chapter-filter" role="group" aria-label="Глава"></div>
         <div class="count-note" id="formula-count"></div>
-        <div class="formula-list" id="formula-list"></div>
+        <div class="list" id="formula-list"></div>
       </div>
-      <div class="card pad" id="formula-detail">
-        <div class="detail-empty">
-          <h3>Выберите формулу слева</h3>
-          <p class="hint" id="detail-intro">Слева — полный свод учебника: формулы с вычислением, тождества с проверкой, правила-подсказки и числовые промежутки с рисунками.</p>
+
+      <div class="calc" id="formula-detail">
+        <div class="calc-empty">
+          <div class="calc-empty-mark">∑</div>
+          <p>Выберите формулу из списка</p>
         </div>
       </div>
-    </div>
-  </section>
 
-  <!-- ============================= ЗАДАЧИ ============================ -->
-  <section class="panel" id="panel-tasks" role="tabpanel" aria-labelledby="tab-tasks">
-    <div class="panel-head">
-      <div>
-        <h2>Решатель задач</h2>
-        <p>Детерминированный парсер, а не нейросеть: он ищет слова и единицы измерения (км/ч, %, м², °C, «навстречу», «по течению», «раскройте скобки»), подбирает шаблон, показывает похожие шаблоны с оценкой совпадения и готовое пошаговое решение. Работает и для задач не из учебника.</p>
-      </div>
-    </div>
+    </section>
 
-    <div class="task-layout">
-      <div class="card pad">
-        <label for="task-input" style="font-weight:600">Условие задачи</label>
-        <textarea id="task-input" placeholder="Например: Автомобиль проехал 390 км за 6,5 ч. Найдите его среднюю скорость."></textarea>
-        <div class="row" style="margin-top:10px">
-          <button class="btn" id="task-solve">Решить задачу</button>
-          <button class="btn ghost" id="task-clear">Очистить</button>
-          <span class="hint" id="task-hint">Ctrl + Enter — решить</span>
-        </div>
-        <div class="section-label">Примеры (в том числе из учебника)</div>
-        <div class="examples" id="task-examples"></div>
-      </div>
+    <!-- =============================== ЗАДАЧИ ============================== -->
+    <section class="panel" id="panel-tasks" role="tabpanel" aria-labelledby="tab-tasks">
 
-      <div class="card pad" id="task-result">
-        <div class="detail-empty">
-          <h3>Здесь появится решение</h3>
-          <p class="hint">Введите задачу или выберите пример — увидите распознанный шаблон, ответ, шаги, связанные формулы и блок «а что если другое число».</p>
+      <div class="picker">
+        <div class="solver">
+          <textarea id="task-input" rows="4" placeholder="Вставьте условие задачи" aria-label="Условие задачи"></textarea>
+          <div class="solver-actions">
+            <button class="btn primary" id="task-solve">Решить</button>
+            <button class="btn" id="task-clear">Очистить</button>
+          </div>
+          <div class="count-note">Примеры</div>
+          <div class="examples" id="task-examples"></div>
         </div>
       </div>
-    </div>
-  </section>
 
-  <!-- =========================== ПРОМЕЖУТКИ ========================== -->
-  <section class="panel" id="panel-intervals" role="tabpanel" aria-labelledby="tab-intervals">
-    <div class="panel-head">
-      <div>
-        <h2>Числовые промежутки</h2>
-        <p>§ 4, п. 11 учебника (с. 51—53): отрезок, интервал, полуинтервалы, лучи, «бесконечность». Мини-рисунок строится как рис. 10—16: закрашенный кружок — конец включается, светлый — нет.</p>
-      </div>
-    </div>
-
-    <div class="card pad">
-      <label for="interval-input" style="font-weight:600">Обозначение или неравенство</label>
-      <div class="row" style="margin-top:8px">
-        <div class="grow">
-          <input type="text" id="interval-input" value="[−2; 5)" placeholder="[−2; 5)   ·   (a; +∞)   ·   x ⩾ −2   ·   −3 ⩽ x < 4" autocomplete="off">
+      <div class="calc" id="task-result">
+        <div class="calc-empty">
+          <div class="calc-empty-mark">=</div>
+          <p>Здесь появится ответ</p>
         </div>
-        <button class="btn" id="interval-go">Показать</button>
       </div>
-      <div class="quick-intervals" id="interval-quick"></div>
-    </div>
 
-    <div id="interval-output" style="margin-top:16px"></div>
+    </section>
 
-    <div class="card pad" style="margin-top:16px">
-      <h3 style="margin-bottom:6px">Пересечение и объединение</h3>
-      <p class="hint" style="margin-bottom:10px">Сравните два промежутка — как при решении систем неравенств.</p>
-      <div class="row">
-        <div class="grow"><input type="text" id="interval-a" value="[−2; 5)" aria-label="Первый промежуток"></div>
-        <div class="grow"><input type="text" id="interval-b" value="(0; 8]" aria-label="Второй промежуток"></div>
-        <button class="btn ghost" id="interval-both">Найти</button>
+    <!-- ============================= ПРОМЕЖУТКИ ============================ -->
+    <section class="panel" id="panel-intervals" role="tabpanel" aria-labelledby="tab-intervals">
+
+      <div class="picker">
+        <div class="solver">
+          <label class="field-label" for="interval-input">Промежуток</label>
+          <input class="text-input" type="text" id="interval-input" value="[−2; 5)" placeholder="[−2; 5) · (a; +∞) · x ⩾ −2" autocomplete="off">
+          <div class="solver-actions">
+            <button class="btn primary" id="interval-go">Показать</button>
+          </div>
+          <div class="count-note">Быстрый выбор</div>
+          <div class="examples" id="interval-quick"></div>
+
+          <div class="sep"></div>
+
+          <label class="field-label">Пересечение и объединение</label>
+          <input class="text-input" type="text" id="interval-a" value="[−2; 5)" aria-label="Первый промежуток">
+          <input class="text-input" type="text" id="interval-b" value="(0; 8]" aria-label="Второй промежуток" style="margin-top:8px">
+          <div class="solver-actions">
+            <button class="btn" id="interval-both">Найти</button>
+          </div>
+          <div id="interval-both-output"></div>
+        </div>
       </div>
-      <div id="interval-both-output" style="margin-top:12px"></div>
-    </div>
-  </section>
 
-  <!-- ============================= СПРАВКА =========================== -->
-  <section class="panel" id="panel-reference" role="tabpanel" aria-labelledby="tab-reference">
-    <div class="panel-head">
-      <div>
-        <h2>Справка и содержание учебника</h2>
-        <p>Что именно загружено в калькулятор, откуда взята каждая формула и как работает парсер задач.</p>
+      <div class="calc" id="interval-output">
+        <div class="calc-empty">
+          <div class="calc-empty-mark">↔</div>
+          <p>Введите промежуток</p>
+        </div>
       </div>
-    </div>
-    <div class="two-col">
-      <div class="card pad">
-        <h3>Откуда данные</h3>
-        <p class="hint" id="ref-book"></p>
-        <div class="section-label">Содержание (по главам)</div>
-        <div id="ref-chapters"></div>
-      </div>
-      <div class="card pad">
-        <h3>Как работает решатель задач</h3>
-        <ol class="steps">
-          <li>Текст нормализуется: десятичная запятая → точка, типографский минус → «−», «ё» → «е».</li>
-          <li>Извлекаются числа вместе с единицами измерения: км/ч, км, м, см, ч, мин, кг, %, м², м³, °C, °F, шт.</li>
-          <li>Все шаблоны проверяют текст и вопрос («найдите скорость», «сколько процентов», «раскройте скобки»).</li>
-          <li>Шаблоны получают оценку совпадения; лучший показывает решение, остальные — как «похожие».</li>
-          <li>Если ни один шаблон не подошёл, калькулятор всё равно подсказывает по найденным словам и числам.</li>
-        </ol>
-        <div class="section-label">Блок «А что если другое число?»</div>
-        <p class="hint">Для каждой задачи автоматически пересчитываются варианты с удвоенным, уменьшенным вдвое и соседними значениями — видно, как меняется ответ. В полях ввода можно подставить своё число.</p>
-        <div class="section-label">Загруженные шаблоны</div>
-        <div id="ref-rules" class="hint"></div>
-      </div>
-    </div>
-  </section>
 
-</main>
+    </section>
 
-<footer class="site-footer">
-  GDZ-calc · калькулятор по учебнику «Математика. Алгебра. 7 класс» (Макарычев и др., Просвещение, 2024).
-  Все вычисления выполняются локально в браузере — без сервера и без отправки данных.
-</footer>
+  </main>
+</div>
 
 <script type="module" src="js/app.js"></script>
 </body>

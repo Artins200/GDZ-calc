@@ -1,291 +1,309 @@
+/* =========================================================================
+   GDZ-calc — спокойный интерфейс калькулятора.
+   Логика простая: слева выбор, справа результат.
+   ========================================================================= */
+
 :root {
-  --blue: #0d8bb5;
-  --blue-dark: #0a6f92;
-  --blue-soft: #e6f4f9;
-  --ink: #23303a;
-  --ink-soft: #5b6873;
-  --line: #d9e2e8;
-  --paper: #fffdf8;
-  --bg: #eef3f6;
-  --green: #1b9e77;
-  --red: #c8455f;
-  --violet: #7b61b8;
-  --orange: #e07b39;
-  --radius: 14px;
-  --shadow: 0 2px 6px rgba(35, 48, 58, .07), 0 12px 28px rgba(35, 48, 58, .07);
+  --bg: #f4f5f7;
+  --surface: #ffffff;
+  --surface-2: #fafbfc;
+  --line: #e2e5ea;
+  --line-soft: #eef0f3;
+  --ink: #1c2230;
+  --ink-2: #4a5567;
+  --ink-3: #8791a1;
+  --accent: #256bd8;
+  --accent-soft: #eaf1fd;
+  --ok: #12855b;
+  --ok-soft: #e8f7ef;
+  --warn: #b3661b;
+  --radius: 12px;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
+  --serif: Georgia, "Times New Roman", serif;
 }
 
 * { box-sizing: border-box; }
 
-html, body { margin: 0; padding: 0; }
-
-body {
-  font-family: "PT Sans", "Segoe UI", Roboto, system-ui, -apple-system, sans-serif;
-  color: var(--ink);
+html, body {
+  margin: 0; padding: 0;
   background: var(--bg);
-  line-height: 1.5;
-  font-size: 16px;
+  color: var(--ink);
+  font: 15px/1.5 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  -webkit-font-smoothing: antialiased;
   -webkit-text-size-adjust: 100%;
 }
 
-h1, h2, h3, h4 { font-family: Georgia, "Times New Roman", serif; font-weight: 700; line-height: 1.22; margin: 0 0 .35em; }
-h1 { font-size: 1.5rem; }
-h2 { font-size: 1.24rem; }
-h3 { font-size: 1.05rem; }
-p { margin: 0 0 .6em; }
-a { color: var(--blue-dark); }
+.app { max-width: 1080px; margin: 0 auto; padding: 14px; }
 
-.wrap { max-width: 1180px; margin: 0 auto; padding: 0 16px 64px; }
-
-/* ------------------------------------------------------------- header */
-.site-header {
-  background: linear-gradient(135deg, #0d8bb5 0%, #0a7fa6 45%, #1b9e77 100%);
-  color: #fff;
-  padding: 18px 0 0;
-  box-shadow: 0 2px 14px rgba(13, 139, 181, .28);
+/* ------------------------------------------------------------------ шапка */
+.bar {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; flex-wrap: wrap; margin-bottom: 14px;
 }
-.site-header .inner { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; justify-content: space-between; }
-.brand { display: flex; gap: 12px; align-items: center; }
-.brand-mark {
-  width: 46px; height: 46px; border-radius: 12px; background: rgba(255,255,255,.18);
-  display: grid; place-items: center; font-family: Georgia, serif; font-size: 1.5rem; font-weight: 700;
-  border: 1px solid rgba(255,255,255,.35);
+.bar-title { display: flex; align-items: center; gap: 9px; }
+.logo {
+  width: 30px; height: 30px; border-radius: 8px; flex: none;
+  display: grid; place-items: center;
+  background: var(--accent); color: #fff;
+  font: 600 17px/1 var(--serif);
 }
-.brand h1 { margin: 0; font-size: 1.32rem; letter-spacing: .2px; }
-.brand small { display: block; font-family: "PT Sans", sans-serif; font-size: .78rem; opacity: .85; font-weight: 400; letter-spacing: .1px; }
+.bar h1 { margin: 0; font-size: 1.05rem; font-weight: 650; letter-spacing: -0.01em; }
 
-.tabs { display: flex; gap: 4px; flex-wrap: wrap; margin-top: 14px; }
-.tab {
-  appearance: none; border: 0; cursor: pointer;
-  background: rgba(255,255,255,.14); color: #fff;
-  padding: 10px 16px; border-radius: 10px 10px 0 0;
-  font: inherit; font-weight: 600; font-size: .92rem;
-  transition: background .15s, transform .15s;
+/* сегментированный переключатель */
+.seg {
+  display: inline-flex; gap: 2px; padding: 3px;
+  background: #e9ecf1; border-radius: 10px;
 }
-.tab:hover { background: rgba(255,255,255,.26); }
-.tab[aria-selected="true"] { background: var(--paper); color: var(--blue-dark); }
-.tab .badge {
-  display: inline-block; margin-left: 6px; font-size: .72rem; padding: 1px 6px;
-  border-radius: 999px; background: rgba(0,0,0,.14); vertical-align: 1px;
+.seg-btn {
+  appearance: none; border: 0; cursor: pointer; font: inherit;
+  font-size: .875rem; padding: 7px 16px; border-radius: 8px;
+  background: transparent; color: var(--ink-2);
+  transition: background .12s, color .12s;
 }
-.tab[aria-selected="true"] .badge { background: var(--blue-soft); color: var(--blue-dark); }
-
-/* ------------------------------------------------------------- panels */
-.panel { display: none; padding-top: 22px; }
-.panel.active { display: block; }
-.panel-head { display: flex; flex-wrap: wrap; gap: 12px; align-items: center; justify-content: space-between; margin-bottom: 14px; }
-.panel-head p { margin: 0; color: var(--ink-soft); font-size: .92rem; max-width: 64ch; }
-
-.card {
-  background: var(--paper); border: 1px solid var(--line); border-radius: var(--radius);
-  box-shadow: var(--shadow);
-}
-.card.pad { padding: 18px 20px; }
-
-.row { display: flex; gap: 10px; flex-wrap: wrap; align-items: center; }
-.grow { flex: 1 1 220px; }
-
-input[type="text"], input[type="number"], textarea, select {
-  font: inherit; color: var(--ink);
-  background: #fff; border: 1px solid var(--line); border-radius: 10px;
-  padding: 10px 12px; width: 100%;
-  transition: border-color .15s, box-shadow .15s;
-}
-input:focus, textarea:focus, select:focus {
-  outline: none; border-color: var(--blue); box-shadow: 0 0 0 3px rgba(13,139,181,.15);
-}
-textarea { min-height: 116px; resize: vertical; line-height: 1.45; }
-
-button.btn {
-  appearance: none; cursor: pointer; font: inherit; font-weight: 600;
-  border-radius: 10px; padding: 10px 18px; border: 1px solid transparent;
-  background: var(--blue); color: #fff; transition: background .15s, transform .1s;
-}
-button.btn:hover { background: var(--blue-dark); }
-button.btn:active { transform: translateY(1px); }
-button.btn.ghost { background: #fff; color: var(--blue-dark); border-color: var(--line); }
-button.btn.ghost:hover { background: var(--blue-soft); }
-button.btn.small { padding: 6px 12px; font-size: .85rem; border-radius: 8px; }
-
-.chip {
-  appearance: none; cursor: pointer; font: inherit; font-size: .84rem;
-  background: #fff; border: 1px solid var(--line); border-radius: 999px;
-  padding: 6px 12px; color: var(--ink-soft); transition: all .13s;
-}
-.chip:hover { border-color: var(--blue); color: var(--blue-dark); background: var(--blue-soft); }
-.chip.active { background: var(--blue); border-color: var(--blue); color: #fff; }
-
-.hint { font-size: .84rem; color: var(--ink-soft); }
-.mono { font-family: "SF Mono", ui-monospace, Consolas, monospace; font-size: .9em; }
-
-/* ------------------------------------------------------------- формулы */
-.layout-2 { display: grid; grid-template-columns: 340px 1fr; gap: 18px; align-items: start; }
-@media (max-width: 880px) { .layout-2 { grid-template-columns: 1fr; } }
-
-.search-bar { position: relative; margin-bottom: 12px; }
-.search-bar input { padding-left: 38px; }
-.search-bar::before {
-  content: "⌕"; position: absolute; left: 13px; top: 50%; transform: translateY(-52%);
-  font-size: 1.2rem; color: var(--ink-soft);
+.seg-btn:hover { color: var(--ink); }
+.seg-btn[aria-selected="true"] {
+  background: var(--surface); color: var(--ink); font-weight: 600;
+  box-shadow: 0 1px 2px rgba(16, 24, 40, .08);
 }
 
-.chapter-list { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+/* --------------------------------------------------------------- каркас */
+main { display: block; }
+.panel { display: none; }
+.panel.active { display: grid; grid-template-columns: 320px 1fr; gap: 14px; align-items: start; }
 
-.formula-list { max-height: 66vh; overflow-y: auto; padding-right: 4px; display: flex; flex-direction: column; gap: 6px; }
-.formula-item {
-  text-align: left; appearance: none; cursor: pointer; font: inherit;
-  background: #fff; border: 1px solid var(--line); border-left: 3px solid var(--blue);
-  border-radius: 9px; padding: 9px 11px; transition: all .13s;
+@media (max-width: 760px) {
+  .panel.active { grid-template-columns: 1fr; }
+  /* на телефоне: список формул — компактной полосой сверху */
+  .picker { position: static; max-height: none; }
+  .list { max-height: 44vh; overflow-y: auto; }
+  .app { padding: 10px; }
+  .calc { padding: 14px 12px; min-height: 0; }
+  .calc-empty { min-height: 120px; }
+  .bar h1 { font-size: 1rem; }
+  .seg-btn { padding: 6px 12px; font-size: .84rem; }
+  .fields { grid-template-columns: 1fr 1fr; }
 }
-.formula-item:hover { background: var(--blue-soft); border-color: var(--blue); }
-.formula-item[aria-current="true"] { background: var(--blue-soft); border-color: var(--blue); box-shadow: inset 0 0 0 1px var(--blue); }
-.formula-item .t { font-weight: 600; font-size: .92rem; display: block; }
-.formula-item .d { font-family: Georgia, serif; font-size: .92rem; color: var(--blue-dark); display: block; margin-top: 2px; }
-.formula-item .m { font-size: .74rem; color: var(--ink-soft); }
 
-.count-note { font-size: .82rem; color: var(--ink-soft); margin: 6px 0 10px; }
-
-.detail-empty { padding: 42px 22px; text-align: center; color: var(--ink-soft); }
-.detail-title { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; justify-content: space-between; }
-.detail-title h2 { margin: 0; font-size: 1.18rem; }
-.tag {
-  font-size: .74rem; padding: 2px 9px; border-radius: 999px;
-  background: var(--blue-soft); color: var(--blue-dark); font-weight: 600; white-space: nowrap;
+/* --------------------------------------------------- левая часть: выбор */
+.picker {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 12px;
 }
-.tag.kind-identity { background: #eaf6f0; color: #14795a; }
-.tag.kind-rule { background: #fdf1e7; color: #a3541f; }
-.tag.kind-interval { background: #f2edfa; color: #5a41a0; }
+@media (min-width: 761px) {
+  .picker { position: sticky; top: 14px; max-height: calc(100vh - 28px); display: flex; flex-direction: column; }
+  .picker .list { overflow-y: auto; }
+}
 
-.display-formula {
-  font-family: Georgia, "Times New Roman", serif; font-size: 1.5rem; text-align: center;
-  color: var(--blue-dark); background: var(--blue-soft);
-  border-radius: 10px; padding: 16px 12px; margin: 14px 0; line-height: 1.35;
+.search { position: relative; }
+.search input {
+  width: 100%; padding: 10px 32px 10px 12px;
+  border: 1px solid var(--line); border-radius: 9px;
+  font: inherit; background: var(--surface-2); color: var(--ink);
+}
+.search input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+.search-clear {
+  position: absolute; right: 4px; top: 50%; transform: translateY(-50%);
+  width: 26px; height: 26px; border: 0; border-radius: 50%;
+  background: transparent; color: var(--ink-3); font-size: 17px; line-height: 1;
+  cursor: pointer; display: none;
+}
+.search.has-value .search-clear { display: block; }
+.search-clear:hover { background: var(--line-soft); color: var(--ink); }
+
+.chapters { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 9px; }
+.chapters button {
+  font: inherit; font-size: .78rem; cursor: pointer;
+  padding: 4px 9px; border-radius: 7px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink-2);
+}
+.chapters button:hover { border-color: #c9d2e0; }
+.chapters button.active {
+  background: var(--accent-soft); border-color: #bcd4f7; color: var(--accent); font-weight: 600;
+}
+
+.count-note { font-size: .75rem; color: var(--ink-3); margin: 10px 0 6px; }
+
+/* список формул */
+.list { display: flex; flex-direction: column; gap: 2px; margin-top: 4px; min-height: 0; }
+.list button {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 8px;
+  width: 100%; text-align: left; cursor: pointer; font: inherit;
+  padding: 8px 10px; border: 0; border-radius: 8px; background: transparent; color: var(--ink);
+}
+.list button:hover { background: var(--surface-2); }
+.list button[aria-current="true"] { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+.list button .f-title { font-size: .875rem; }
+.list button .f-formula {
+  font-family: var(--serif); font-size: .8rem; color: var(--ink-3); white-space: nowrap;
+  max-width: 45%; overflow: hidden; text-overflow: ellipsis;
+}
+.list button[aria-current="true"] .f-formula { color: var(--accent); opacity: .8; }
+
+/* ---------------------------------------------- правая часть: калькулятор */
+.calc {
+  background: var(--surface); border: 1px solid var(--line);
+  border-radius: var(--radius); padding: 16px; min-height: 300px;
+}
+.calc-empty {
+  min-height: 260px; display: flex; flex-direction: column;
+  align-items: center; justify-content: center; gap: 10px; color: var(--ink-3);
+}
+.calc-empty-mark { font: 400 34px/1 var(--serif); color: #cdd4df; }
+.calc-empty p { margin: 0; font-size: .9rem; }
+
+.calc-head { margin-bottom: 12px; }
+.calc-head h2 { margin: 0 0 2px; font-size: 1rem; font-weight: 650; }
+.calc-meta { font-size: .75rem; color: var(--ink-3); }
+
+/* экран с формулой — как дисплей у калькулятора */
+.screen {
+  font-family: var(--serif); font-size: 1.6rem; line-height: 1.3;
+  text-align: center; color: var(--ink);
+  background: var(--surface-2); border: 1px solid var(--line-soft);
+  border-radius: 10px; padding: 16px 12px; margin-bottom: 14px;
   word-break: break-word;
 }
-@media (max-width: 620px) { .display-formula { font-size: 1.15rem; } }
+@media (max-width: 620px) { .screen { font-size: 1.25rem; } }
 
-.vars-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 10px; margin: 12px 0; }
-.var-field label { display: flex; justify-content: space-between; gap: 6px; font-size: .8rem; color: var(--ink-soft); margin-bottom: 4px; }
-.var-field label b { color: var(--ink); font-weight: 600; }
-.var-field .unit { font-size: .74rem; color: var(--blue-dark); }
-
-.result-box {
-  border: 1px solid #bfe3ef; background: linear-gradient(180deg, #f3fbfe, #eaf7fc);
-  border-radius: 10px; padding: 14px 16px; margin-top: 12px;
+/* поля ввода */
+.fields { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 10px; }
+.field { display: flex; flex-direction: column; gap: 4px; }
+.field label {
+  font-size: .78rem; color: var(--ink-2);
+  display: flex; justify-content: space-between; gap: 6px;
 }
-.result-box .lbl { font-size: .76rem; text-transform: uppercase; letter-spacing: .07em; color: var(--blue-dark); font-weight: 700; }
-.result-value { font-family: Georgia, serif; font-size: 1.6rem; color: var(--ink); margin: 2px 0 0; word-break: break-word; }
-
-ol.steps { margin: 10px 0 0; padding-left: 22px; }
-ol.steps li { margin-bottom: 5px; font-size: .93rem; }
-ul.notes { margin: 10px 0 0; padding-left: 20px; font-size: .9rem; color: var(--ink-soft); }
-ul.notes li { margin-bottom: 4px; }
-
-.section-label { font-size: .76rem; text-transform: uppercase; letter-spacing: .07em; color: var(--ink-soft); font-weight: 700; margin: 18px 0 6px; }
-
-.bullets { margin: 8px 0 0; padding-left: 20px; }
-.bullets li { margin-bottom: 4px; font-size: .93rem; }
-
-.related-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(210px, 1fr)); gap: 8px; }
-.related-card {
-  text-align: left; appearance: none; cursor: pointer; font: inherit;
-  background: #fff; border: 1px solid var(--line); border-radius: 9px; padding: 9px 11px;
+.field label .u { color: var(--ink-3); }
+.field input, .field select {
+  width: 100%; padding: 9px 10px; font: inherit; font-size: 1rem;
+  border: 1px solid var(--line); border-radius: 9px;
+  background: var(--surface); color: var(--ink);
+  font-variant-numeric: tabular-nums;
 }
-.related-card:hover { border-color: var(--blue); background: var(--blue-soft); }
-.related-card b { display: block; font-size: .87rem; }
-.related-card span { font-family: Georgia, serif; font-size: .84rem; color: var(--blue-dark); }
+.field input:focus, .field select:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+.field input:disabled { background: var(--surface-2); color: var(--ink-3); }
 
-.whatif-table { width: 100%; border-collapse: collapse; font-size: .89rem; margin-top: 6px; }
-.whatif-table th, .whatif-table td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); vertical-align: top; }
-.whatif-table th { font-size: .76rem; text-transform: uppercase; letter-spacing: .05em; color: var(--ink-soft); }
-.whatif-table td.num { white-space: nowrap; }
-
-/* ------------------------------------------------------------- задачи */
-.task-layout { display: grid; grid-template-columns: 1fr; gap: 16px; }
-.examples { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
-
-.badge-ok { color: var(--green); }
-.badge-warn { color: var(--orange); }
-.badge-bad { color: var(--red); }
-
-.confidence {
-  display: inline-flex; align-items: center; gap: 7px; font-size: .82rem; color: var(--ink-soft);
+/* строка действий */
+.actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 12px; }
+.btn {
+  font: inherit; font-size: .875rem; cursor: pointer;
+  padding: 9px 16px; border-radius: 9px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink);
+  transition: background .12s, border-color .12s;
 }
-.confidence .bar { width: 84px; height: 7px; border-radius: 999px; background: #e3eaee; overflow: hidden; }
-.confidence .bar i { display: block; height: 100%; background: linear-gradient(90deg, var(--blue), var(--green)); }
+.btn:hover { background: var(--surface-2); border-color: #c9d2e0; }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.btn.primary:hover { background: #1f5cbc; border-color: #1f5cbc; }
+.btn.small { padding: 6px 11px; font-size: .8rem; }
 
-.pattern-line { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; justify-content: space-between; margin-bottom: 6px; }
-.why { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
-.why span {
-  font-size: .78rem; background: #f2f6f8; border: 1px solid var(--line);
-  border-radius: 999px; padding: 3px 9px; color: var(--ink-soft);
+/* ответ — главное, крупно */
+.answer {
+  margin-top: 14px; padding: 16px;
+  background: var(--accent-soft); border-radius: 10px;
+}
+.answer .answer-label {
+  font-size: .72rem; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--accent); font-weight: 700;
+}
+.answer .answer-value {
+  margin: 4px 0 0; font-size: 1.9rem; line-height: 1.2; font-weight: 650;
+  font-variant-numeric: tabular-nums; color: #123a76;
+  word-break: break-word;
+}
+.answer .answer-sub { margin: 6px 0 0; font-size: .8rem; color: var(--ink-2); }
+@media (max-width: 620px) { .answer .answer-value { font-size: 1.5rem; } }
+
+/* ошибка */
+.err {
+  margin-top: 12px; padding: 10px 12px; border-radius: 9px;
+  background: #fdf3ec; border: 1px solid #f3dcc8; color: #8a4d16; font-size: .875rem;
 }
 
-.cand-list { display: flex; flex-direction: column; gap: 6px; margin-top: 6px; }
-.cand {
-  display: flex; gap: 10px; align-items: center; justify-content: space-between;
-  border: 1px solid var(--line); border-radius: 9px; padding: 7px 11px; font-size: .87rem; background: #fff;
+/* ---------------------------------------------------- подробности решения */
+details.more {
+  margin-top: 12px; border: 1px solid var(--line); border-radius: 10px;
+  background: var(--surface-2);
 }
-.cand .bar { flex: 0 0 70px; height: 6px; border-radius: 999px; background: #e3eaee; overflow: hidden; }
-.cand .bar i { display: block; height: 100%; background: var(--blue); }
-
-.figure { margin: 12px 0; text-align: center; }
-.figure svg { max-width: 100%; height: auto; border-radius: 10px; border: 1px solid var(--line); }
-
-/* ------------------------------------------------------------- промежутки */
-.interval-layout { display: grid; grid-template-columns: 1fr; gap: 16px; }
-.quick-intervals { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0; }
-.two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
-@media (max-width: 720px) { .two-col { grid-template-columns: 1fr; } }
-
-.info-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr)); gap: 10px; margin-top: 10px; }
-.info-cell { background: #f7fafb; border: 1px solid var(--line); border-radius: 9px; padding: 9px 11px; }
-.info-cell .k { font-size: .74rem; text-transform: uppercase; letter-spacing: .06em; color: var(--ink-soft); }
-.info-cell .v { font-family: Georgia, serif; font-size: 1.02rem; margin-top: 2px; word-break: break-word; }
-
-.err { background: #fdf0f3; border: 1px solid #f0c2cc; color: #8f2a40; border-radius: 10px; padding: 10px 12px; font-size: .9rem; }
-
-footer.site-footer {
-  text-align: center; color: var(--ink-soft); font-size: .8rem;
-  padding: 22px 16px 30px; border-top: 1px solid var(--line); margin-top: 24px;
+details.more > summary {
+  cursor: pointer; padding: 10px 12px; font-size: .8rem; color: var(--ink-2);
+  list-style: none; display: flex; align-items: center; gap: 6px;
 }
-footer.site-footer a { color: var(--blue-dark); }
-
-::-webkit-scrollbar { width: 9px; height: 9px; }
-::-webkit-scrollbar-thumb { background: #c6d3da; border-radius: 999px; }
-::-webkit-scrollbar-thumb:hover { background: #a9bcc6; }
-
-.sr-only { position: absolute; width: 1px; height: 1px; padding: 0; margin: -1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; border: 0; }
-
-/* --- проверка ответа --- */
-.check-box {
-  margin-top: 12px; border-radius: 10px; padding: 12px 14px;
-  border: 1px solid var(--line); background: #fbfaf6;
+details.more > summary::-webkit-details-marker { display: none; }
+details.more > summary::before {
+  content: "▸"; color: var(--ink-3); font-size: .7rem; transition: transform .12s;
 }
-.check-box.ok { border-color: #b9e2cd; background: #f2faf6; }
-.check-box.warn { border-color: #f0cfae; background: #fdf7f0; }
-.check-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; font-size: .95rem; }
-.check-mark {
-  display: inline-flex; align-items: center; justify-content: center;
-  width: 19px; height: 19px; border-radius: 50%; font-size: .78rem; font-weight: 700;
-  background: #d8efe1; color: #14795a; flex: none;
+details.more[open] > summary::before { transform: rotate(90deg); }
+details.more > summary:hover { color: var(--ink); }
+.more-body { padding: 0 12px 12px; }
+
+.steps { margin: 6px 0 0; padding-left: 20px; }
+.steps li { margin-bottom: 5px; font-size: .875rem; color: var(--ink-2); }
+.steps:empty { display: none; }
+
+/* проверка */
+.check-list { list-style: none; margin: 6px 0 0; padding: 0; }
+.check-list li {
+  display: flex; gap: 7px; align-items: flex-start;
+  font-size: .85rem; color: var(--ink-2); margin-bottom: 4px;
 }
-.check-box.warn .check-mark, li.warn > .check-mark { background: #f7e2cd; color: #a3541f; }
-.check-list { list-style: none; margin: 9px 0 0; padding: 0; }
-.check-list li { display: flex; gap: 8px; align-items: flex-start; font-size: .9rem; margin-bottom: 5px; }
 .check-list li:last-child { margin-bottom: 0; }
+.tick {
+  width: 16px; height: 16px; flex: none; margin-top: 2px;
+  display: grid; place-items: center; border-radius: 50%;
+  background: var(--ok-soft); color: var(--ok); font-size: .65rem; font-weight: 700;
+}
+.tick.bad { background: #fdf0e6; color: var(--warn); }
 
-/* --- варианты решения --- */
-.variant-tabs { display: flex; flex-wrap: wrap; gap: 7px; margin-bottom: 10px; }
-.variant-tab {
-  font: inherit; font-size: .86rem; cursor: pointer; text-align: left;
-  padding: 7px 12px; border-radius: 9px; border: 1px solid var(--line);
-  background: #fff; color: var(--ink); line-height: 1.25;
+/* способы решения */
+.tabs-mini { display: flex; flex-wrap: wrap; gap: 5px; margin-bottom: 8px; }
+.tabs-mini button {
+  font: inherit; font-size: .78rem; cursor: pointer;
+  padding: 5px 10px; border-radius: 7px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink-2);
 }
-.variant-tab span { display: block; font-size: .72rem; color: var(--ink-soft); margin-top: 2px; }
-.variant-tab:hover { border-color: var(--blue); }
-.variant-tab.active {
-  border-color: var(--blue); background: var(--blue-soft); color: var(--blue-dark); font-weight: 600;
+.tabs-mini button.active { background: var(--accent-soft); border-color: #bcd4f7; color: var(--accent); font-weight: 600; }
+.variant { display: none; }
+.variant.active { display: block; }
+
+/* связанные формулы в карточке */
+.related { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 6px; }
+.related button {
+  font: inherit; font-size: .78rem; cursor: pointer;
+  padding: 5px 9px; border-radius: 7px;
+  border: 1px solid var(--line); background: var(--surface); color: var(--ink-2);
 }
-.variant-body { display: none; }
-.variant-body.active { display: block; }
+.related button:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ------------------------------------------------------ форма задачи */
+.solver { display: flex; flex-direction: column; }
+.field-label { font-size: .78rem; color: var(--ink-2); margin-bottom: 5px; }
+.solver textarea, .text-input {
+  width: 100%; font: inherit; font-size: .9rem;
+  padding: 10px; border: 1px solid var(--line); border-radius: 9px;
+  background: var(--surface-2); color: var(--ink); resize: vertical;
+}
+.solver textarea:focus, .text-input:focus { outline: 2px solid var(--accent-soft); border-color: var(--accent); }
+.solver-actions { display: flex; gap: 7px; margin-top: 9px; }
+
+.examples { display: flex; flex-direction: column; gap: 3px; max-height: 300px; overflow-y: auto; }
+.examples button {
+  font: inherit; font-size: .8rem; text-align: left; cursor: pointer;
+  padding: 7px 9px; border: 0; border-radius: 7px;
+  background: transparent; color: var(--ink-2); line-height: 1.35;
+}
+.examples button:hover { background: var(--surface-2); color: var(--ink); }
+
+.sep { height: 1px; background: var(--line); margin: 14px 0; }
+
+/* рисунок промежутка */
+.figure { margin: 12px 0; text-align: center; }
+.figure svg { max-width: 100%; height: auto; border: 1px solid var(--line-soft); border-radius: 10px; }
+
+.mono { font-family: var(--mono); font-size: .85em; }
+.hint { color: var(--ink-3); font-size: .82rem; }
+
+/* прокрутка поаккуратнее */
+.list::-webkit-scrollbar, .examples::-webkit-scrollbar { width: 8px; }
+.list::-webkit-scrollbar-thumb, .examples::-webkit-scrollbar-thumb {
+  background: #d6dbe4; border-radius: 4px;
+}
+.list::-webkit-scrollbar-thumb:hover, .examples::-webkit-scrollbar-thumb:hover { background: #c3cad6; }
