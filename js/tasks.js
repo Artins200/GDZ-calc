@@ -56,8 +56,11 @@ function classifyUnit(word) {
   const w = (word || '').replace(/[.,;:!?)\]}]+$/g, '').trim().toLowerCase();
   if (!w) return '';
   if (/^(км\/ч|км\\ч|км\/час|кмвчас|километр.*час)/.test(w)) return 'kmh';
+  // «40/км в час», «40 км/час», «40 км в час» — та же скорость
+  if (/^\/?км\s*в\s*час/.test(w) || /^\/км/.test(w)) return 'kmh';
   if (/^(м\/с|м\\с|м\/сек)/.test(w)) return 'ms';
   if (/^%/.test(w)) return 'pct';
+  if (/^(процент|проц\.|проц)/.test(w)) return 'pct';
   if (/^(м2|м²|м\^2|кв\.?м|квадратн)/.test(w)) return 'm2';
   if (/^(см2|см²|см\^2)/.test(w)) return 'cm2';
   if (/^(м3|м³|м\^3|куб\.?м|кубическ)/.test(w)) return 'm3';
@@ -69,6 +72,7 @@ function classifyUnit(word) {
   if (/^(кг|килограмм)/.test(w)) return 'kg';
   if (/^(г|грамм)/.test(w)) return 'g';
   if (/^(т|тонн)/.test(w)) return 't';
+  if (/^(год|лет)/.test(w)) return 'year';
   if (/^(ч|час)/.test(w)) return 'h';
   if (/^мин/.test(w)) return 'min';
   if (/^(с|сек)/.test(w)) return 'sec';
@@ -107,7 +111,21 @@ function extractNumbers(raw) {
     let word = m[2] || '';
     if (/^\d/.test(word)) word = '';            // «5 6» — это не единица измерения
     let unit = classifyUnit(word);
+    // «2 года», «3 года» — это срок, а не граммы
+    if (/^год/.test(word.toLowerCase()) && unit === 'g') unit = 'year';
+    if (/^лет/.test(word.toLowerCase()) && !unit) unit = 'year';
     // «скорости 12 и 8 км/ч»: единица стоит только у второго числа — наследуем её
+    if (!unit) {
+      // единица может идти отдельным словом сразу после числа: «40 /км в час»
+      const tailWord = norm.slice(start + m[0].length).match(/^\s*(\/\s*км\s*в\s*час|%|процент\w*|проц\b)/i);
+      if (tailWord) unit = classifyUnit(tailWord[1].replace(/\s+/g, ''));
+    }
+    if (!unit) {
+      // и перед числом: «скорость 40», «шанс 95»
+      const prevWord = norm.slice(Math.max(0, start - 20), start).toLowerCase();
+      if (/процент\w*\s*$|шанс\w*\s*$|вероятност\w*\s*$/.test(prevWord) && !/км/.test(prevWord)) unit = 'pct';
+      else if (/скорост\w*\s*$/.test(prevWord) && !/ч/.test(prevWord)) unit = '';
+    }
     if (!unit) {
       // «12 и 8 км/ч» — единица стоит только у последнего числа списка
       const tail = norm.slice(start + m[0].length);
@@ -130,7 +148,7 @@ function extractNumbers(raw) {
 function makeContext(raw) {
   const text = normalizeText(raw);
   const nums = extractNumbers(raw);
-  const questionMatch = text.match(/(?:найдите|чему равен[оа]?|какова|каков|какое|сколько|с какой|за сколько|через сколько|определите|вычислите|как изменится|какая|какой|чему равно)[^?]*\??$/i);
+  const questionMatch = text.match(/(?:найдите|найти|чему равен[оа]?|чему равна|какова|каков|какое|сколько|с какой|за сколько|через сколько|определите|вычислите|как изменится|какая|какой|чему равно)[^?!.]*(?:[?!.]|$)/i);
   const question = questionMatch ? questionMatch[0] : text.slice(Math.max(0, text.length - 90));
   return {
     raw, text, nums, question,
@@ -147,20 +165,33 @@ function makeContext(raw) {
       const c = nums.find((n) => n.unit === u && !exclude.includes(n.v));
       return c ? c.v : null;
     },
-    /** Число с указанной единицей, ближайшее к упоминанию слова (в символах текста). */
+    /**
+     * Число с указанной единицей, ближайшее к слову.
+     * Сначала ищем число сразу после слова («получили 40», «шанс 95»),
+     * и только потом — вообще ближайшее по тексту.
+     */
     numClosest: (word, units = []) => {
       const re = new RegExp(word, 'gi');
       const spots = [];
       let m;
-      while ((m = re.exec(text)) !== null) spots.push(m.index);
+      while ((m = re.exec(text)) !== null) spots.push(m.index + m[0].length);
       if (!spots.length) return null;
       const pool = nums.filter((n) => !units.length || units.includes(n.unit));
+
+      // 1) число, стоящее сразу после слова (в пределах 25 символов)
+      for (const spot of spots) {
+        const tail = text.slice(spot, spot + 40);
+        const hit = tail.match(/-?\d+(?:[.,]\d+)?/);
+        if (!hit) continue;
+        const val = Number(hit[0].replace(',', '.'));
+        const found = pool.find((n) => Math.abs(n.v - val) < 1e-9);
+        if (found) return found.v;
+      }
+      // 2) иначе — ближайшее по позиции
       let best = null, bestDist = Infinity;
       for (const n of pool) {
-        const at = text.indexOf(String(n.v));
-        if (at < 0) continue;
         for (const spot of spots) {
-          const d = Math.abs(spot - at);
+          const d = Math.abs(spot - n.index);
           if (d < bestDist) { bestDist = d; best = n; }
         }
       }
@@ -238,6 +269,80 @@ function extractExpression(ctx) {
 }
 
 function buildResult(score, config) { return { score, ...config }; }
+
+/* ======================================================================
+ * «ПО ДЕЙСТВИЯМ»
+ * Любая задача решается цепочкой действий: 1) что нашли, 2) что нашли…
+ * Каждое действие — { what, formula, calc, value, unit }.
+ * ====================================================================== */
+
+/** Значение с единицей: «300 км». */
+function withUnit(v, unit) {
+  return `${fmt(v)}${unit ? ' ' + unit : ''}`;
+}
+
+/**
+ * Строит текст решения по действиям.
+ * @param {Array<{what:string, calc:string, value:any, unit?:string, note?:string}>} actions
+ */
+export function actionsToSteps(actions) {
+  return actions.map((a, i) => {
+    const head = `${i + 1}) ${a.what}:`;
+    const body = a.calc ? ` ${a.calc}` : '';
+    const tail = a.value !== undefined && a.value !== null ? ` = ${withUnit(a.value, a.unit)}` : '';
+    return `${head}${body}${tail}${a.note ? ' — ' + a.note : ''}`;
+  });
+}
+
+/**
+ * Превращает шаги решения в нумерованные «действия».
+ * Каждый шаг становится отдельным действием: «1) находим скорость сближения: …».
+ * Если шаг уже начинается с «1)», он остаётся как есть.
+ */
+export function toActions(steps, { what = '' } = {}) {
+  const clean = (steps || []).filter((x) => typeof x === 'string' && x.trim());
+  if (!clean.length) return [];
+  // уже по действиям — не трогаем
+  if (/^\s*1\)/.test(clean[0])) return clean;
+
+  return clean.map((step, i) => {
+    const numbered = `${i + 1}) ${step.trim()}`;
+    if (i === 0 && what) return `${numbered}`;
+    return numbered;
+  });
+}
+
+/**
+ * Проверка ответа «на разумность»: если шаблон выдал число, которое
+ * противоречит вопросу (например, спрашивают километры, а ответ в часах),
+ * лучше честно сказать, чем показать неверное.
+ */
+export function sanityCheck(question, answer, unit) {
+  const q = String(question || '').toLowerCase();
+  const u = String(unit || '').toLowerCase();
+  const wantsKm = /сколько (километров|км|метров)|какое расстояние|какой путь|пролетит|проедет|пройдёт|сколько успеет пролететь/.test(q);
+  const wantsTime = /через сколько|за сколько|сколько времени|когда встрет|сколько часов/.test(q);
+  const wantsPct = /шанс|процент|вероятност/.test(q);
+  const wantsSpeed = /с какой скорост|какова скорость|найдите скорость|средняя скорость|среднюю скорость/.test(q);
+
+  if (wantsPct && !/%/.test(String(answer))) {
+    return { ok: false, hint: 'В вопросе спрашивают шанс или проценты, а ответ получился не в процентах.' };
+  }
+  // Вопрос про расстояние, а ответ во времени — самая частая ошибка.
+  if (wantsKm && !/км|метр/.test(String(answer)) && /^\s*[\d,.]+\s*(ч|час|мин|с|сек)\b/.test(String(answer).trim())) {
+    return { ok: false, hint: 'В вопросе спрашивают расстояние, а ответ получился во времени.' };
+  }
+  if (wantsTime && /^\s*[\d,.]+\s*км\s*$/.test(String(answer).trim())) {
+    return { ok: false, hint: 'В вопросе спрашивают время, а ответ получился в километрах.' };
+  }
+  if (wantsSpeed && !/км\/ч|м\/с/.test(String(answer)) && u && u !== 'км/ч') {
+    return { ok: false, hint: 'В вопросе спрашивают скорость, а ответ получился в других единицах.' };
+  }
+  return { ok: true };
+}
+
+/** Есть ли в вопросе нехватка данных: спрашивают про величину, которой нет. */
+function questionNeeds(ctx, re) { return ctx.qHas(re); }
 
 /* ======================================================================
  * ШАБЛОНЫ ЗАДАЧ
@@ -505,6 +610,8 @@ addRule({
 addRule({
   id: 'motion_svt', name: 'Движение: путь = скорость · время',
   run(ctx) {
+    // Если спрашивают среднюю скорость — это другое правило, не путаем.
+    if (ctx.has(/средн[а-яё]*\s+скорост[а-яё]*/)) return null;
     const words = ctx.has(/(скорост|путь|проехал|прош[её]л|движ|ехал|автомобил|поезд|теплоход|велосипед|пешеход|турист|мот[о]?циклист|км\/ч)/);
     if (!words) return null;
     if (ctx.has(/навстречу|догон|вдогонку|по течению|против течения/)) return null; // отдельные шаблоны
@@ -577,6 +684,192 @@ addRule({
               ? `t = s / vсбл = ${fmt(v.s)} / ${fmt(a + b)} = ${fmt(val)} ч`
               : `s = vсбл · t = ${fmt(a + b)} · ${fmt(v.t ?? 1)} = ${fmt(val)} км`,
           ],
+        };
+      },
+    });
+  },
+});
+
+/* ---- 9в. Трубы / бассейн: совместная работа через «за сколько» ---- */
+addRule({
+  id: 'pipes_fill',
+  name: 'Трубы, бассейн: одна заполняет за a ч, вторая за b ч — за сколько вместе',
+  run(ctx) {
+    if (!ctx.has(/труб|бассейн|резервуар|бак\b|наполн|выкач|цистерн/)) return null;
+    const times = ctx.nums.filter((n) => ['h', 'min'].includes(n.unit)).map((n) => hours(n.v, n.unit));
+    if (times.length < 2) return null;
+    const [a, b] = times;
+
+    return buildResult(36, {
+      matched: 'Совместная работа: 1/a + 1/b',
+      why: ['речь о трубах или бассейне', 'два времени «заполняет за …»'],
+      inputs: { a, b },
+      unknown: 't',
+      formulaIds: ['work_rate', 'work_one'],
+      notes: ['Всю работу принимаем за 1: первая труба за час делает 1/a часть, вторая — 1/b.'],
+      compute: (v) => {
+        const x = numOr(v.a, 1), y = numOr(v.b, 1);
+        const t = (x * y) / (x + y);
+        return {
+          answer: answerStr(t, 'ч'), unit: 'ч',
+          steps: actionsToSteps([
+            { what: 'Принимаем всю работу за 1', calc: 'бассейн = 1' },
+            { what: 'Скорость первой трубы', calc: `1/${fmt(x)} бассейна за час` },
+            { what: 'Скорость второй трубы', calc: `1/${fmt(y)} бассейна за час` },
+            { what: 'Вместе за час', calc: `1/${fmt(x)} + 1/${fmt(y)} = ${fmt(1 / x + 1 / y)} бассейна`, value: null },
+            { what: 'Время вдвоём', calc: `t = 1 / (${fmt(1 / x + 1 / y)}) = ${fmt(t)} ч`, value: null },
+          ]),
+        };
+      },
+    });
+  },
+});
+
+/* ---- 9г. «Задумали число…» — обратные действия ---- */
+addRule({
+  id: 'guess_number',
+  name: 'Задумали число: обратные действия',
+  run(ctx) {
+    if (!ctx.has(/задумал|загадал|задумали|загадали/)) return null;
+    // Берём действия по порядку: «умножили на 4», «прибавили 8», «получили 40»
+    const ops = [];
+    const re = /(прибав\w*|плюс|увелич\w*\s+на|вычл\w*|вычел\w*|минус|уменьш\w*\s+на|умнож\w*|\*|раздел\w*)/gi;
+    let m;
+    while ((m = re.exec(ctx.text)) !== null) {
+      const tail = ctx.text.slice(m.index + m[0].length, m.index + m[0].length + 40);
+      const num = tail.match(/-?\d+(?:[.,]\d+)?/);
+      if (!num) continue;
+      const kind = /прибав|плюс|увелич/.test(m[0]) ? '+' : /вычл|вычел|минус|уменьш/.test(m[0]) ? '-'
+        : /умнож|\*/.test(m[0]) ? '*' : '/';
+      ops.push({ kind, value: Number(num[0].replace(',', '.')) });
+    }
+    if (!ops.length) return null;
+    const got = ctx.numClosest('получ|оказал|вышл|вышел', ['']) ?? ctx.nums[ctx.nums.length - 1]?.v;
+    if (got == null) return null;
+    // убираем «получили 40» из списка действий
+    const list = ops.filter((o) => o.value !== got);
+    if (!list.length) return null;
+
+    return buildResult(38, {
+      matched: 'Обратные действия: идём от результата назад',
+      why: ['слово «задумали число»', `известен результат ${fmt(got)}`, `действий: ${list.length}`],
+      inputs: { result: got, stepsCount: list.length, ...Object.fromEntries(list.map((o, i) => ['k' + i, o.value])) },
+      unknown: 'x',
+      formulaIds: [],
+      notes: ['Чтобы найти задуманное число, идём от ответа назад и делаем обратные действия.'],
+      compute: (v) => {
+        const acts = list.map((o) => ({ ...o, value: v['k' + list.indexOf(o)] ?? o.value }));
+        let x = numOr(v.result, got);
+        const back = [];
+        for (let i = acts.length - 1; i >= 0; i--) {
+          const o = acts[i];
+          const before = x;
+          if (o.kind === '+') x -= o.value;
+          else if (o.kind === '-') x += o.value;
+          else if (o.kind === '*') x /= o.value;
+          else x *= o.value;
+          const word = o.kind === '+' ? 'прибавили' : o.kind === '-' ? 'вычли' : o.kind === '*' ? 'умножили' : 'разделили';
+          const inverse = o.kind === '+' ? 'вычитаем' : o.kind === '-' ? 'прибавляем' : o.kind === '*' ? 'делим' : 'умножаем';
+          back.push({ what: `Обратное действие: ${inverse} ${fmt(o.value)}`, calc: `${fmt(before)} → ${fmt(x)}`, value: null, note: `до этого было «${word} ${fmt(o.value)}»` });
+        }
+        const check = list.reduce((acc, o) => (o.kind === '+' ? acc + o.value : o.kind === '-' ? acc - o.value : o.kind === '*' ? acc * o.value : acc / o.value), x);
+        return {
+          answer: answerStr(Math.round(x * 1e10) / 1e10, ''), unit: '',
+          steps: actionsToSteps([
+            ...back,
+            { what: 'Проверка', calc: `если x = ${fmt(x)}, то после всех действий получаем ${fmt(check)}`, value: null, note: 'должно совпасть с условием' },
+          ]),
+        };
+      },
+    });
+  },
+});
+
+/* ---- 9д. Вклад / рост по процентам ---- */
+addRule({
+  id: 'deposit',
+  name: 'Вклад: проценты начисляются каждый год',
+  run(ctx) {
+    if (!ctx.has(/вклад|банк|годовы|капитализац|начисл/)) return null;
+    const pct = ctx.first('pct');
+    const sum = ctx.nums.find((n) => ['rub', ''].includes(n.unit) && n.v !== pct)?.v ?? null;
+    // «через 2 года», «за 3 года», «2 года» — срок вклада
+    const years = ctx.nums.find((n) => n.unit === 'year' && n.v !== pct && n.v !== sum)?.v ?? null;
+    if (pct == null || sum == null) return null;
+    const y = years ?? 1;
+    if (y > 50) return null;
+    return buildResult(34, {
+      matched: 'Вклад: сумма · (1 + p/100)ⁿ',
+      why: ['слова «вклад», «банк», «годовых»', 'есть процент и сумма'],
+      inputs: { s: sum, p: pct, n: y },
+      unknown: 'S',
+      formulaIds: ['pct_of'],
+      compute: (v) => {
+        const total = numOr(v.s, 0) * Math.pow(1 + numOr(v.p, 0) / 100, numOr(v.n, 1));
+        const acts = [{ what: 'Сумма вклада', calc: withUnit(numOr(v.s, 0), 'р.') }];
+        let cur = numOr(v.s, 0);
+        for (let i = 0; i < Math.min(numOr(v.n, 1), 6); i++) {
+          const add = cur * numOr(v.p, 0) / 100;
+          cur += add;
+          acts.push({ what: `Год ${i + 1}`, calc: `${fmt(cur - add)} + ${fmt(add)} = ${fmt(cur)} р.`, value: null });
+        }
+        acts.push({ what: 'Ответ', calc: `через ${fmt(numOr(v.n, 1))} г. — ${fmt(total)} р.`, value: null });
+        return { answer: answerStr(total, 'р.'), unit: 'р.', steps: actionsToSteps(acts) };
+      },
+    });
+  },
+});
+
+/* ---- 9б. Шанс / вероятность события (проценты без «от числа») ---- */
+addRule({
+  id: 'risk_percent',
+  name: 'Шанс, риск, вероятность события — в процентах',
+  run(ctx) {
+    const riskWord = /шанс|вероятност|риск/;
+    if (!riskWord.test(ctx.text)) return null;
+    // Спрашивают именно «каков шанс / чему равна вероятность»
+    if (!ctx.qHas(/каков\w*\s+шанс|чему равен\w*\s+шанс|какова вероятност|чему равна вероятност|какой шанс|каков риск|какой риск/)) return null;
+    // Это не «проценты от числа»: там есть «от» или «сколько процентов»
+    if (ctx.has(/сколько процентов|процент(?:ов)?\s+от|\d+\s*%\s*от/)) return null;
+    // «шанс, что дождя не будет» — считается отдельно (дополнение до 100)
+    const opposite = ctx.qHas(/не будет|не пойдёт|не пойдет|не случится|не произойдёт|не произойдет|наоборот/);
+
+    const pct = ctx.numClosest('шанс|вероятност|риск|инфаркт|процент|брак|опасност', ['pct']);
+    const time = ctx.lastByUnit(['h', 'min']);
+    const speed = ctx.byUnit('kmh')[0] ?? null;
+    const dist = ctx.nums.find((n) => ['km', 'm'].includes(n.unit))?.v ?? null;
+
+    if (pct == null) return null;
+
+    return buildResult(36, {
+      matched: 'Шанс события: читаем процент из условия',
+      why: [`в условии прямо назван шанс — ${fmt(pct)}%`, time != null ? `есть время ${fmt(time)} ч` : ''],
+      inputs: { p: pct, t: time, v: speed, s: dist },
+      unknown: 'pct',
+      formulaIds: [],
+      notes: opposite
+        ? ['Спрашивают про противоположное событие, поэтому берём дополнение до 100%.']
+        : ['Шанс в условии задан прямо, поэтому ответ — это то же число. Остальные данные (время, скорость) на него не влияют.'],
+      compute: (v) => {
+        const p = numOr(v.p, 0);
+        const actions = [
+          { what: 'Находим шанс в условии', calc: `${fmt(p)}% — он уже назван прямо`, value: null },
+        ];
+        if (v.t != null) actions.push({
+          what: 'Время бега', calc: `${fmt(v.t)} ч — на шанс не влияет`, value: null,
+        });
+        if (v.v != null) actions.push({
+          what: 'Скорость', calc: `${fmt(v.v)} км/ч — на шанс не влияет`, value: null,
+        });
+        if (opposite) {
+          const inv = 100 - p;
+          actions.push({ what: 'Считаем противоположное событие', calc: `100% − ${fmt(p)}% = ${fmt(inv)}%` });
+          return { answer: `${fmt(inv)}%`, unit: '%', steps: actionsToSteps(actions) };
+        }
+        actions.push({ what: 'Ответ', calc: `шанс остаётся тем же — ${fmt(p)}%` });
+        return {
+          answer: `${fmt(p)}%`, unit: '%',
+          steps: actionsToSteps(actions),
         };
       },
     });
@@ -879,10 +1172,17 @@ addRule({
   id: 'percent_of', name: 'Нахождение процентов от числа',
   run(ctx) {
     if (!ctx.has(/%|процент/)) return null;
-    if (!ctx.has(/(%\s*от|процент\w*\s+от|найдите\s+\d+[.,]?\d*\s*%|каков\w*\s+\d+[.,]?\d*\s*%|составляет\s+\d+[.,]?\d*\s*%|содержится\s+\d+[.,]?\d*\s*%)/)) return null;
+    const explicit = ctx.has(/(%\s*от|процент\w*\s+от|найдите\s+\d+[.,]?\d*\s*%|каков\w*\s+\d+[.,]?\d*\s*%|составляет\s+\d+[.,]?\d*\s*%|содержится\s+\d+[.,]?\d*\s*%)/);
+    // «200 деталей, 5 процентов бракованных — сколько бракованных?»
+    // Здесь нет слова «от», но проценты относятся к общему числу.
+    const implicit = ctx.qHas(/сколько/) && ctx.has(/%|процент/);
+    if (!explicit && !implicit) return null;
     if (ctx.has(/(число, .*% которого|число по его процентам|% которого (равн|составля)|на сколько процентов|сколько процентов|сниз|повыс|увелич|уменьш|скидк)/)) return null;
     const p = ctx.first('pct') ?? ctx.numNear(['процент', 'составляет', 'от числа'], ['']);
-    const b = ctx.numNear(['от числа', 'от', 'масса', 'стоимость', 'цена', 'всего'], ['']) ?? ctx.values('').find((v) => v !== p);
+    // Базовое число — то, от которого берём процент (200 деталей, 240, класс…)
+    const b = ctx.numNear(['от числа', 'от', 'масса', 'стоимость', 'цена', 'всего', 'парти', 'класс', 'всех'], [''])
+      ?? ctx.nums.find((n) => n.v !== p)?.v
+      ?? null;
     if (p == null || b == null) return null;
     return buildResult(19, {
       matched: 'a % от числа b', why: ['знак %', 'запрос « найти проценты от числа »'],
@@ -1009,16 +1309,105 @@ addRule({
 addRule({
   id: 'average', name: 'Среднее арифметическое / средняя скорость',
   run(ctx) {
-    if (!ctx.has(/(среднее арифметическое|средняя скорость|в среднем)/)) return null;
-    const nums = ctx.values('').filter((v) => !ctx.byUnit('pct').includes(v));
+    // «среднюю скорость», «средняя скорость», «в среднем» — разные падежи
+    if (!ctx.has(/средн[а-яё]*\s+(арифметическ[а-яё]*|скорост[а-яё]*)|в среднем/)) return null;
+    // Берём только числа, перечисленные в условии (а не номер задачи и не проценты)
+    const srcText = ctx.text.replace(/^\s*\d{1,2}\s*[.)]\s*/, '');
+    const listMatch = srcText.match(/чис[еа]л[а-яё]*\s*[:—-]?\s*([\d\s,.;и]+)/);
+    let nums;
+    if (listMatch) {
+      nums = (listMatch[1].match(/-?\d+(?:[.,]\d+)?/g) || []).map((x) => Number(x.replace(',', '.')));
+    } else {
+      nums = ctx.values('').filter((v) => !ctx.byUnit('pct').includes(v));
+    }
     if (nums.length < 2) return null;
-    if (ctx.has(/средняя скорость/)) {
+    if (ctx.has(/средн[а-яё]*\s+скорост[а-яё]*/)) {
+      // Части пути: пары «скорость + время» в любом порядке —
+      // «2 часа со скоростью 60 км/ч», «со скоростью 60 км/ч 2 часа»
+      const speeds = [];
+      const times = [];
+      for (const n of ctx.nums) {
+        if (n.unit === 'kmh' || n.unit === 'ms') speeds.push(n);
+        else if (n.unit === 'h' || n.unit === 'min') times.push(n);
+      }
+      // Ищем прямо в тексте пары «время … скорость» в обоих порядках.
+      const src = ctx.text;
+      const parts = [];
+      const pairs = [
+        // «2 часа со скоростью 60 км/ч»
+        /(\d+(?:[.,]\d+)?)\s*(?:ч|час[аов]*|мин\w*)[^\d]{0,25}?(\d+(?:[.,]\d+)?)\s*км\s*\/\s*ч/g,
+        // «60 км/ч 2 часа»
+        /(\d+(?:[.,]\d+)?)\s*км\s*\/\s*ч[^\d]{0,25}?(\d+(?:[.,]\d+)?)\s*(?:ч|час[аов]*|мин\w*)/g,
+      ];
+      let pm;
+      // «60 км/ч в течение 2 часов» и «со скоростью 60 км/ч 2 часа»
+      const pairs2 = /(\d+(?:[.,]\d+)?)\s*км\s*\/\s*ч(?:[^\d]{0,30})?(\d+(?:[.,]\d+)?)\s*(?:ч|час[аов]*)/g;
+      // Собираем пары обоими способами и оставляем те, где скорость похожа
+      // на скорость (а не на время): «60 км/ч 2 часа» и «2 часа → 60 км/ч».
+      // Самый надёжный разбор: «… 60 км/ч 2 часа» — время идёт сразу за
+      // своей скоростью, а не «2 часа, потом 80 км/ч» (это уже другой участок).
+      const strict = /(\d+(?:[.,]\d+)?)\s*км\s*\/\s*ч\s*,?\s*(?:за|в течение|на протяжении|ещё|еще)?\s*(\d+(?:[.,]\d+)?)\s*(?:ч|час[аов]*|мин\w*)/g;
+      while ((pm = strict.exec(src)) !== null) {
+        parts.push({ v: Number(pm[1].replace(',', '.')), t: Number(pm[2].replace(',', '.')) });
+      }
+      if (parts.length < 2) {
+        while ((pm = pairs2.exec(src)) !== null) parts.push({ v: Number(pm[1].replace(',', '.')), t: Number(pm[2].replace(',', '.')) });
+      }
+      if (parts.length < 2) {
+        parts.length = 0;
+        while ((pm = pairs[0].exec(src)) !== null) parts.push({ t: Number(pm[1].replace(',', '.')), v: Number(pm[2].replace(',', '.')) });
+      }
+      if (!parts.length) {
+        // «80 км/ч 3 часа», «80 км/ч, потом 3 часа» — между ними могут быть слова
+        const loose = /(\d+(?:[.,]\d+)?)\s*км\s*\/\s*ч[^\d]{0,40}?(\d+(?:[.,]\d+)?)\s*(?:ч|час[аов]*|мин\w*)/g;
+        while ((pm = loose.exec(src)) !== null) {
+          const v = Number(pm[1].replace(',', '.'));
+          const t = Number(pm[2].replace(',', '.'));
+          if (!parts.some((x) => x.v === v && x.t === t)) parts.push({ v, t });
+        }
+      }
+
+      parts.sort((a, b) => a.v - b.v);
+
+      if (parts.length >= 2) {
+        return buildResult(40, {
+          matched: 'Средняя скорость = весь путь / всё время',
+          why: ['слова «средняя скорость»', `найдено участков: ${parts.length}`],
+          inputs: { v1: parts[0].v, t1: parts[0].t, v2: parts[1].v, t2: parts[1].t },
+          unknown: 'vср',
+          formulaIds: ['average', 'motion_s', 'motion_v'],
+          notes: ['Средняя скорость — это весь путь, делённый на всё время, а не среднее из скоростей.'],
+          compute: (v) => {
+            const v1 = numOr(v.v1, 0), t1 = numOr(v.t1, 0), v2 = numOr(v.v2, 0), t2 = numOr(v.t2, 0);
+            const s1 = v1 * t1, s2 = v2 * t2;
+            const total = s1 + s2, time = t1 + t2;
+            return {
+              answer: answerStr(total / time, 'км/ч'), unit: 'км/ч',
+              steps: actionsToSteps([
+                { what: 'Путь на первом участке', calc: `s₁ = ${fmt(v1)} · ${fmt(t1)} = ${fmt(s1)} км` },
+                { what: 'Путь на втором участке', calc: `s₂ = ${fmt(v2)} · ${fmt(t2)} = ${fmt(s2)} км` },
+                { what: 'Весь путь', calc: `${fmt(s1)} + ${fmt(s2)} = ${fmt(total)} км` },
+                { what: 'Всё время', calc: `${fmt(t1)} + ${fmt(t2)} = ${fmt(time)} ч` },
+                { what: 'Средняя скорость', calc: `${fmt(total)} / ${fmt(time)} = ${fmt(total / time)} км/ч` },
+              ]),
+            };
+          },
+        });
+      }
+
       const d = pickDistance(ctx), t = pickTime(ctx);
       if (!d || !t) return null;
-      return buildResult(19, {
+      return buildResult(34, {
         matched: 'Средняя скорость = путь / время', why: ['слова «средняя скорость»'],
         inputs: { s: d.value, t: t.value }, unknown: 'v', formulaIds: ['motion_v', 'average'],
-        compute: (v) => ({ answer: answerStr(v.s / v.t, 'км/ч'), unit: 'км/ч', steps: [`vср = s/t = ${fmt(v.s)} / ${fmt(v.t)} = ${fmt(v.s / v.t)} км/ч`] }),
+        compute: (v) => ({
+          answer: answerStr(v.s / v.t, 'км/ч'), unit: 'км/ч',
+          steps: actionsToSteps([
+            { what: 'Весь путь', calc: withUnit(v.s, 'км') },
+            { what: 'Всё время', calc: withUnit(v.t, 'ч') },
+            { what: 'Средняя скорость', calc: `${fmt(v.s)} / ${fmt(v.t)} = ${fmt(v.s / v.t)} км/ч` },
+          ]),
+        }),
       });
     }
     const picked = nums.slice(0, Math.min(nums.length, 8));
@@ -1851,7 +2240,15 @@ addRule({
   id: 'compose_formula', name: 'Составить формулу линейной зависимости по условию',
   run(ctx) {
     if (!ctx.has(/(задайте формулой|составьте формулу|выразите формулой|зависимость.*формулой)/)) return null;
-    const nums = ctx.values('').filter((v) => !ctx.byUnit('pct').includes(v));
+    // Берём только числа, перечисленные в условии (а не номер задачи и не проценты)
+    const srcText = ctx.text.replace(/^\s*\d{1,2}\s*[.)]\s*/, '');
+    const listMatch = srcText.match(/чис[еа]л[а-яё]*\s*[:—-]?\s*([\d\s,.;и]+)/);
+    let nums;
+    if (listMatch) {
+      nums = (listMatch[1].match(/-?\d+(?:[.,]\d+)?/g) || []).map((x) => Number(x.replace(',', '.')));
+    } else {
+      nums = ctx.values('').filter((v) => !ctx.byUnit('pct').includes(v));
+    }
     if (nums.length < 2) return null;
     const rate = ctx.numNear(['кажд', 'в час', 'за', 'по', 'скорость', 'цена'], ['']) ?? nums[0];
     const base = nums.find((v) => v !== rate) ?? 0;
@@ -2031,9 +2428,13 @@ export function solveTask(raw, options = {}) {
     }
   }
 
+  // Ответ противоречит вопросу — честно предупреждаем, а не выдаём как верный.
+  const sanity = sanityCheck(ctx.question, main.answer, main.unit || '');
+
   return {
     ...base,
     bestId: best.id,
+    sanity,
     pattern: best.name,
     matched: best.matched,
     confidence: Math.min(99, 55 + Math.round(best.score * 1.8)),
@@ -2042,7 +2443,9 @@ export function solveTask(raw, options = {}) {
     unknown: best.unknown,
     answer: main.answer,
     unit: main.unit || '',
-    steps: main.steps || [],
+    // Каждый шаг — отдельное действие, пронумерованное: 1), 2), 3)…
+    steps: toActions(main.steps || []),
+    rawSteps: main.steps || [],
     // Проверка ответа и альтернативные способы решения (если шаблон их дал).
     checks: (() => {
       if (main.checks?.length) return main.checks;
@@ -2051,7 +2454,11 @@ export function solveTask(raw, options = {}) {
     })(),
     variants: main.variants || [],
     variantsNote: main.variantsNote || '',
-    notes: [...(best.notes || []), ...(main.notes || [])],
+    notes: [
+      ...(best.notes || []),
+      ...(main.notes || []),
+      ...(sanity.ok ? [] : [`Возможно, шаблон подобран неверно: ${sanity.hint} Проверьте, что именно спрашивают в задаче.`]),
+    ],
     formulaIds: best.formulaIds || [],
     related: related.slice(0, 8),
     whatIf: whatIf.slice(0, 10),

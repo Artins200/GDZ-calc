@@ -442,6 +442,15 @@ $$('#ineq-examples button').forEach((b) => b.addEventListener('click', () => {
 const taskInput = $('#task-input');
 const taskResult = $('#task-result');
 
+/** Русское склонение: 1 действие, 2 действия, 5 действий. */
+function plural(n, one, few, many) {
+  const a = Math.abs(n) % 100, b = a % 10;
+  if (a > 10 && a < 20) return many;
+  if (b > 1 && b < 5) return few;
+  if (b === 1) return one;
+  return many;
+}
+
 function parseNum(s) {
   if (s === '' || s === null || s === undefined) return null;
   const v = Number(String(s).replace(',', '.').replace(/[−–—]/g, '-'));
@@ -470,6 +479,15 @@ function renderTask(sol) {
     <p class="answer-value">${esc(sol.answer)}</p>
   </div>`;
 
+  // Предупреждение, если ответ противоречит вопросу или есть важное пояснение
+  const notes = (sol.notes || []).filter(Boolean);
+  if (notes.length && sol.sanity && sol.sanity.ok === false) {
+    html += `<div class="warn-box">
+      <b>Проверьте условие</b>
+      <span>${esc(sol.sanity.hint)} Возможно, вопрос понят не так — уточните, что нужно найти.</span>
+    </div>`;
+  }
+
   if (sol.draw) html += `<div class="figure">${sol.draw}</div>`;
 
   // Подробности — по настройке «Ответ».
@@ -479,17 +497,30 @@ function renderTask(sol) {
     </div></details>`;
   }
 
-  if (SHOW_STEPS() && (sol.steps?.length || sol.variants?.length)) {
+  if (sol.steps?.length || sol.variants?.length) {
     let inner = '';
     if (sol.variants?.length) {
       inner += `<div class="tabs-mini">${sol.variants.map((v, i) =>
         `<button data-variant="${i}" class="${i === 0 ? 'active' : ''}">${esc(v.title.replace(/^Способ \d+\.\s*/, ''))}</button>`).join('')}</div>`;
       inner += sol.variants.map((v, i) =>
-        `<ol class="steps variant${i === 0 ? ' active' : ''}" data-variant-body="${i}">${v.steps.map((st) => `<li>${esc(st)}</li>`).join('')}</ol>`).join('');
+        `<ol class="steps variant${i === 0 ? ' active' : ''}" data-variant-body="${i}">${v.steps.map((st, j) => `<li data-n="${j + 1}">${esc(String(st).replace(/^\s*\d+\)\s*/, ''))}</li>`).join('')}</ol>`).join('');
     } else {
-      inner += `<ol class="steps">${sol.steps.map((x) => `<li>${esc(x)}</li>`).join('')}</ol>`;
+      // «1) …» → номер рисует кружок, в тексте он не нужен
+      const items = sol.steps.map((x) => x.replace(/^\s*\d+\)\s*/, ''));
+      inner += `<ol class="steps">${items.map((x, i) => `<li data-n="${i + 1}">${esc(x)}</li>`).join('')}</ol>`;
     }
-    html += `<details class="more"${SHOW_ALL() ? ' open' : ''}><summary>Решение по шагам</summary><div class="more-body">${inner}</div></details>`;
+    // По действиям показываем сразу, без раскрытия: это главное в решении.
+    const count = sol.variants?.length ? null : sol.steps.length;
+    html += `<div class="actions">
+      <div class="actions-head">Решение по действиям${count ? ` — ${count} ${plural(count, 'действие', 'действия', 'действий')}` : ''}</div>
+      ${inner}
+    </div>`;
+  }
+
+  // Важные пояснения шаблона (например, «шанс в условии задан прямо»)
+  const plainNotes = (sol.notes || []).filter((n) => !/Проверьте, что именно спрашивают/.test(n));
+  if (plainNotes.length) {
+    html += `<div class="note-box">${plainNotes.map((n) => `<p>${esc(n)}</p>`).join('')}</div>`;
   }
 
   const numericKeys = Object.entries(sol.inputs || {}).filter(([, v]) => typeof v === 'number');

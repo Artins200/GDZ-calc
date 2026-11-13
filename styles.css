@@ -293,6 +293,41 @@ details.more > summary::before { content: "▸"; color: var(--ink-3); font-size:
 details.more[open] > summary::before { transform: rotate(90deg); }
 .more-body { padding: 0 13px 13px; }
 
+.warn-box {
+  margin-top: 10px; padding: 11px 13px; border-radius: 12px;
+  background: #2b1f14; border: 1px solid #4a3a1c; color: var(--warn);
+  font-size: .84rem; line-height: 1.45;
+}
+.warn-box b { display: block; margin-bottom: 3px; color: var(--warn); }
+.note-box {
+  margin-top: 10px; padding: 11px 13px; border-radius: 12px;
+  background: var(--bg-2); border: 1px solid var(--line);
+  font-size: .84rem; color: var(--ink-2); line-height: 1.5;
+}
+.note-box p { margin: 0 0 6px; }
+.note-box p:last-child { margin-bottom: 0; }
+
+.actions {
+  margin-top: 12px; border: 1px solid var(--line); border-radius: 14px;
+  background: var(--bg-2); padding: 12px 14px;
+}
+.actions-head {
+  font-size: .78rem; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--accent); font-weight: 700; margin-bottom: 8px;
+}
+.actions .steps { padding-left: 0; list-style: none; counter-reset: act; }
+.actions .steps li {
+  position: relative; padding-left: 26px; margin-bottom: 8px;
+  font-size: .88rem; color: var(--ink); line-height: 1.45;
+}
+.actions .steps li::before {
+  content: attr(data-n); position: absolute; left: 0; top: 1px;
+  width: 18px; height: 18px; border-radius: 50%;
+  background: var(--accent-soft); color: var(--accent);
+  font-size: .68rem; font-weight: 700; display: grid; place-items: center;
+}
+.actions .steps li:last-child { margin-bottom: 0; }
+
 .steps { margin: 4px 0 0; padding-left: 20px; }
 .steps li { margin-bottom: 6px; font-size: .87rem; color: var(--ink-2); }
 .steps li:last-child { margin-bottom: 0; }

@@ -6,7 +6,7 @@ import {
 } from '../js/mathcore.js';
 import { FORMULAS, STATS, formulaSearch } from '../js/formulas.js';
 import { parseInterval, intersect, union, numberLineSVG, describeInterval } from '../js/intervals.js';
-import { solveTask, TASK_EXAMPLES, RULE_COUNT, recomputeWith } from '../js/tasks.js';
+import { solveTask, TASK_EXAMPLES, RULE_COUNT, recomputeWith, sanityCheck } from '../js/tasks.js';
 import { solveInequality, longArithmetic, divideAngle } from '../js/inequalities.js';
 
 let passed = 0;
@@ -441,6 +441,32 @@ ok('деление уголком: 768 ÷ 24 = 32 и остаток', () => {
   const rem = divideAngle(100, 7);
   assert.equal(rem.quotient, '14');
   assert.equal(rem.remainder, 2);
+});
+
+ok('задачи разных типов: ответы сверены вручную', () => {
+  const cases = [
+    ['Через сколько у тети Любы остановится сердце если она бегает 8 часов без остановки и у неё шанс инфаркта 95 процентов, её скорость 40/км в час, каков шанс инфаркта?', '95%'],
+    ['Через первую трубу бассейн наполняется за 6 часов, через вторую за 3 часа. За сколько часов наполнится через обе?', '2 ч'],
+    ['Задумали число, умножили на 4, прибавили 8 и получили 40. Какое число задумали?', '8'],
+    ['Вклад 50000 рублей под 10 процентов годовых. Сколько денег будет через 2 года?', '60500'],
+    ['Машина ехала со скоростью 60 км/ч 2 часа, потом 80 км/ч 3 часа. Найдите среднюю скорость.', '72 км/ч'],
+    ['В партии 200 деталей, 5 процентов бракованных. Сколько бракованных деталей?', '10'],
+    ['В книге 300 страниц. Мальчик прочитал 3/5 книги. Сколько страниц он прочитал?', '180'],
+    ['Турист проехал 600 км за 6 часов. Сколько километров он проедет ещё через 2 часа?', '200'],
+    ['Поезд прошёл 240 км за 3 часа. С какой скоростью он ехал?', '80'],
+  ];
+  for (const [text, expected] of cases) {
+    const s = solveTask(text);
+    assert.ok(String(s.answer).startsWith(expected), `${text.slice(0, 40)}… → ${s.answer}, ждали ${expected}`);
+    assert.ok(s.steps.length >= 2, `нет действий: ${text.slice(0, 40)}`);
+    assert.ok(s.steps.every((x) => /^\d+\)/.test(x)), 'действия должны быть пронумерованы');
+  }
+});
+
+ok('проверка на разумность ловит ответ не в тех единицах', () => {
+  assert.equal(sanityCheck('через сколько часов они встретятся?', '300 км', 'км').ok, false);
+  assert.equal(sanityCheck('сколько километров пролетит муха?', '3 ч', 'ч').ok, false);
+  assert.equal(sanityCheck('каков шанс инфаркта?', '95%', '%').ok, true);
 });
 
 console.log(`\nПройдено: ${passed} проверок\n`);

@@ -724,18 +724,19 @@ export function longArithmetic(a, b, op) {
 }
 
 /**
- * Деление уголком — как в тетради:
+ * Деление уголком — точная запись, как в тетради:
  *
- *       _768 │24
- *         72 │──
- *         ──  │32
- *          48 │
- *          48 │
- *          ── │
- *           0 │
+ *      768 │24
+ *     −72  │──
+ *      ──  │32
+ *       48 │
+ *      −48 │
+ *       ── │
+ *        0 │
  *
- * Возвращает { lines, value, quotient, remainder, negative }: lines — готовые
- * строки для моноширинного шрифта, remainder — остаток (0 при делении нацело).
+ * Слева — делимое и «ступеньки» вычитания, справа за чертой — делитель
+ * и частное. Каждая ступенька выровнена по цифрам, как в школьной тетради.
+ * Возвращает { lines, value, quotient, remainder }.
  */
 export function divideAngle(a, b) {
   const A = Math.abs(Number(a)), B = Math.abs(Number(b));
@@ -752,9 +753,16 @@ export function divideAngle(a, b) {
 
   const digits = String(A).split('');
   const quotient = String(Math.floor(A / B));
-  const steps = [];
+  const BASE = 1;                 // одна колонка слева под знак «−»
+  const grid = [];                // { col, text }
+  const put = (col, text) => grid.push({ col: Math.max(0, col), text });
+
+  put(BASE, String(A));
+
   let acc = 0;
   let started = false;
+  let consumed = -1;              // индекс последней использованной цифры
+  let printedCur = false;
 
   for (let i = 0; i < digits.length; i++) {
     acc = acc * 10 + Number(digits[i]);
@@ -762,32 +770,34 @@ export function divideAngle(a, b) {
     started = true;
     const q = Math.floor(acc / B);
     if (q === 0) continue;
-    const product = q * B;
-    const rest = acc - product;
-    steps.push({ cur: acc, product, rest, col: i + 1 - String(product).length });
-    acc = rest;
-    if (rest === 0) break;
+
+    const product = String(q * B);
+    const cur = String(acc);
+    const lastCol = BASE + i;       // где стоит последняя цифра текущего числа
+
+    if (printedCur) put(lastCol - (cur.length - 1), cur);   // остаток снесённой цифры
+    const productCol = lastCol - (product.length - 1);
+    put(productCol - 1, '−' + product);
+    put(productCol, '─'.repeat(product.length));
+
+    acc = acc - q * B;
+    consumed = i;
+    printedCur = true;
+    // не обрываемся на нулевом остатке: справа могут остаться ещё цифры
   }
 
-  // левая колонка: «_768», вычитаемые и подчёркивания
-  const left = [`_${A}`];
-  steps.forEach((st, idx) => {
-    if (idx > 0) left.push(' '.repeat(st.col) + String(st.cur));
-    left.push(' '.repeat(st.col) + '−' + st.product);
-    left.push(' '.repeat(st.col) + '─'.repeat(String(st.product).length));
-  });
-  // остаток печатаем, только если он не ноль (иначе получается лишняя строка)
-  if (steps.length && acc !== 0) {
-    left.push(' '.repeat(Math.max(0, digits.length - String(acc).length)) + String(acc));
-  }
-  if (!steps.length) left.push(' '.repeat(Math.max(0, digits.length - String(acc).length)) + String(acc));
+  // итоговый остаток
+  const remCol = BASE + (consumed >= 0 ? consumed : 0) - (String(acc).length - 1);
+  put(remCol, String(acc));
 
-  const leftWidth = Math.max(...left.map((l) => l.length)) + 1;
+  const leftWidth = Math.max(...grid.map((g) => g.col + g.text.length));
+
+  // собираем строки: каждая запись — своя строка
+  const leftLines = grid.map((g) => ' '.repeat(g.col) + g.text);
+
   const right = [String(B), '─'.repeat(quotient.length + 2), quotient];
-  const lines = left.map((l, i) => `${l.padEnd(leftWidth)}│${right[i] || ''}`);
-
   return {
-    lines,
+    lines: leftLines.map((l, i) => `${l.padEnd(leftWidth + 1)}│${right[i] || ''}`.trimEnd()),
     value: A / B,
     quotient,
     remainder: acc,
