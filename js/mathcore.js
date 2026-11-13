@@ -120,6 +120,55 @@ const FUNCS = {
 const CONSTS = { PI: Math.PI, pi: Math.PI, e: Math.E };
 const isFunc = (name) => Object.prototype.hasOwnProperty.call(FUNCS, name);
 
+const FUNC_NAMES = new Set(['sqrt', 'abs', 'cbrt', 'pi', 'sin', 'cos', 'tan', 'log', 'ln', 'exp', 'min', 'max', 'round', 'floor', 'ceil']);
+
+/* ---- реестр переменных -------------------------------------------------
+ * Нужен, чтобы отличать «vt» (скорость течения) от «v·t» (произведение),
+ * а «2ab» — от «2·a·b». Каталог формул регистрирует свои имена при загрузке,
+ * плюс есть базовый набор односимвольных и учебных обозначений.
+ * -------------------------------------------------------------------- */
+const KNOWN_VARS = new Set([
+  // односимвольные латиница/кириллица — всегда отдельные переменные
+  ...'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ'.split(''),
+  ...'абвгдежзийклмнопрстуфхцчшщэюя'.split(''),
+  // учебные многосимвольные обозначения
+  'rho', 'PI', 'pi',
+]);
+
+/** Регистрирует имена переменных (вызывается из formulas.js при загрузке каталога). */
+export function registerVariables(names) {
+  for (const n of names || []) if (n) KNOWN_VARS.add(String(n));
+}
+/** Сбрасывает пользовательские имена (для тестов). */
+export function knownVariableNames() {
+  return KNOWN_VARS;
+}
+
+/**
+ * Режет слово-склейку на множители: «ab» → [a, b], «a2b» → [a^2?..] нет —
+ * цифры при букве считаем частью имени (v1), как в учебнике.
+ */
+function splitFactors(word, known) {
+  const out = [];
+  let i = 0;
+  while (i < word.length) {
+    // сначала пробуем самое длинное известное имя, начинающееся здесь
+    let best = null;
+    for (const k of known) {
+      if (k.length > 1 && word.startsWith(k, i)) {
+        if (!best || k.length > best.length) best = k;
+      }
+    }
+    if (best) { out.push(best); i += best.length; continue; }
+    // имя с цифрой: v1, x2, S1
+    const m = word.slice(i).match(/^[A-Za-zА-Яа-я][0-9]+/);
+    if (m) { out.push(m[0]); i += m[0].length; continue; }
+    if (/[A-Za-zА-Яа-я]/.test(word[i])) { out.push(word[i]); i++; continue; }
+    out.push(word.slice(i)); break;
+  }
+  return out;
+}
+
 function tokenize(raw) {
   const s = preprocess(raw);
   const tokens = [];
@@ -138,7 +187,28 @@ function tokenize(raw) {
     if (/[A-Za-zА-Яа-я_]/.test(c)) {
       let j = i + 1;
       while (j < s.length && /[A-Za-zА-Яа-я_0-9]/.test(s[j])) j++;
-      tokens.push({ type: 'ident', value: s.slice(i, j) });
+      const word = s.slice(i, j);
+      // Слово может быть склейкой множителей: «2ab» = 2·a·b, «3abc», «4xyz».
+      // Но это же слово может быть именем переменной (rho, vt, v0, S1) или
+      // функции (sqrt, abs, PI). Порядок разбора:
+      //   1) известное имя функции/константы — берём целиком;
+      //   2) известное имя переменной — берём целиком;
+      //   3) иначе режем на множители, выделяя имя+цифру (v1) как один множитель.
+      if (FUNC_NAMES.has(word.toLowerCase()) || Object.prototype.hasOwnProperty.call(CONSTS, word)) {
+        tokens.push({ type: 'ident', value: word });
+        i = j; continue;
+      }
+      const known = knownVariableNames();
+      if (known.has(word)) {
+        tokens.push({ type: 'ident', value: word });
+        i = j; continue;
+      }
+      const factors = splitFactors(word, known);
+      if (factors.length > 1) {
+        for (const f of factors) tokens.push({ type: 'ident', value: f });
+        i = j; continue;
+      }
+      tokens.push({ type: 'ident', value: word });
       i = j; continue;
     }
     if ('+-*/^'.includes(c)) { tokens.push({ type: 'op', value: c }); i++; continue; }

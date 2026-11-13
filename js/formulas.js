@@ -12,6 +12,8 @@
  *   desc, keywords, example, kind: formula|identity|rule|interval
  * ========================================================================= */
 
+import { registerVariables } from './mathcore.js';
+
 export const BOOK = {
   title: 'Математика. Алгебра. 7 класс',
   authors: 'Ю. Н. Макарычев, Н. Г. Миндюк, К. И. Нешков, С. Б. Суворова',
@@ -1602,6 +1604,10 @@ function normalize(o) {
 
 export const FORMULAS = RAW.map(normalize);
 export const FORMULA_BY_ID = new Map(FORMULAS.map((f) => [f.id, f]));
+
+// Сообщаем вычислителю все встречающиеся имена переменных, чтобы «rho», «vt»,
+// «S1» не принимались за произведение букв (см. mathcore.splitFactors).
+registerVariables(FORMULAS.flatMap((f) => (f.vars || []).map((v) => v.name)));
 export const CHAPTER_BY_ID = new Map(CHAPTERS.map((c) => [c.id, c]));
 
 export function formulaSearch(q) {

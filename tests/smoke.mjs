@@ -16,6 +16,23 @@ const ok = (name, fn) => {
 const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) < eps, `${a} ≠ ${b}`);
 
 console.log('\nМАТЕМАТИЧЕСКОЕ ЯДРО');
+ok('неявное умножение переменных: 2ab = 2·a·b', () => {
+  near(evaluate('2ab', { a: 2, b: 3 }), 12);
+  near(evaluate('3abc', { a: 2, b: 3, c: 5 }), 90);
+  near(evaluate('a^2+2ab+b^2', { a: 2, b: 3 }), 25);
+});
+ok('многосимвольные имена не режутся на буквы (rho, vt, S1)', () => {
+  near(evaluate('rho*V', { rho: 7.8, V: 10 }), 78);
+  near(evaluate('vt', { vt: 2 }), 2);
+  near(evaluate('v0 + vt', { v0: 20, vt: 2 }), 22);
+  near(evaluate('S1 + S2', { S1: 3, S2: 4 }), 7);
+});
+ok('квадрат суммы проверяется символьно', () => {
+  assert.equal(checkIdentity('(a+b)^2 = a^2 + 2ab + b^2').equal, true);
+  assert.equal(checkIdentity('(a-b)^2 = a^2 - 2ab + b^2').equal, true);
+  assert.equal(checkIdentity('(a+b)^2 = a^2 + b^2').equal, false);
+});
+
 ok('порядок действий и десятичная запятая', () => near(evaluate('12*6 - 35/7'), 67));
 ok('неявное умножение 3(x+y)', () => near(evaluate('3(x+y)', { x: 5, y: 4 }), 27));
 ok('степень и унарный минус −2² = −4', () => near(evaluate('-2^2'), -4));
