@@ -59,6 +59,8 @@ function classifyUnit(word) {
   // «40/км в час», «40 км/час», «40 км в час» — та же скорость
   if (/^\/?км\s*в\s*час/.test(w) || /^\/км/.test(w)) return 'kmh';
   if (/^(м\/с|м\\с|м\/сек)/.test(w)) return 'ms';
+  if (/^(м\/мин|м\\мин)/.test(w)) return 'mmin';
+  if (/^(м\/ч|м\\ч)/.test(w)) return 'mh';
   if (/^%/.test(w)) return 'pct';
   if (/^(процент|проц\.|проц)/.test(w)) return 'pct';
   if (/^(м2|м²|м\^2|кв\.?м|квадратн)/.test(w)) return 'm2';
@@ -68,13 +70,13 @@ function classifyUnit(word) {
   if (/^(км|километр)/.test(w)) return 'km';
   if (/^(мм|миллиметр)/.test(w)) return 'mm';
   if (/^(см|сантиметр)/.test(w)) return 'cm';
+  if (/^мин/.test(w)) return 'min';           // до «м»: «минут» начинается с «м»
   if (/^(м|метр)/.test(w)) return 'm';
   if (/^(кг|килограмм)/.test(w)) return 'kg';
   if (/^(г|грамм)/.test(w)) return 'g';
   if (/^(т|тонн)/.test(w)) return 't';
   if (/^(год|лет)/.test(w)) return 'year';
   if (/^(ч|час)/.test(w)) return 'h';
-  if (/^мин/.test(w)) return 'min';
   if (/^(с|сек)/.test(w)) return 'sec';
   if (/^(р|руб)/.test(w)) return 'rub';
   if (/^га\b/.test(w)) return 'ha';
@@ -207,6 +209,16 @@ function makeContext(raw) {
       }) && (!units.length || units.includes(n.unit)));
       return c ? c.v : null;
     },
+    numNearU: (words, units = []) => {
+      const c = nums.find((n) => words.some((w) => {
+        if (!w) return true;
+        const hay = n.before + ' ' + n.after;
+        return w.length <= 3
+          ? new RegExp(`(^|[^a-zа-я])${w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}([^a-zа-я]|$)`, 'i').test(hay)
+          : hay.includes(w);
+      }) && (!units.length || units.includes(n.unit)));
+      return c ? { v: c.v, unit: c.unit } : null;
+    },
   };
 }
 
@@ -233,8 +245,9 @@ function pickTime(ctx) {
   return c ? { value: hours(c.v, c.unit), unit: 'ч', raw: c.v, rawUnit: c.unit } : null;
 }
 function pickSpeed(ctx) {
-  const c = ctx.nums.find((n) => n.unit === 'kmh' || n.unit === 'ms');
-  return c ? { value: c.v, unit: c.unit === 'ms' ? 'м/с' : 'км/ч' } : null;
+  const SU = { ms: 'м/с', mmin: 'м/мин', mh: 'м/ч', kmh: 'км/ч' };
+  const c = ctx.nums.find((n) => Object.prototype.hasOwnProperty.call(SU, n.unit));
+  return c ? { value: c.v, unit: SU[c.unit] } : null;
 }
 function pickDistance(ctx) {
   const c = ctx.nums.find((n) => ['km', 'm', 'cm', 'mm'].includes(n.unit));
@@ -329,7 +342,9 @@ export function sanityCheck(question, answer, unit) {
     return { ok: false, hint: 'В вопросе спрашивают шанс или проценты, а ответ получился не в процентах.' };
   }
   // Вопрос про расстояние, а ответ во времени — самая частая ошибка.
-  if (wantsKm && !/км|метр/.test(String(answer)) && /^\s*[\d,.]+\s*(ч|час|мин|с|сек)\b/.test(String(answer).trim())) {
+  // Но если в вопросе явно спрашивают ВРЕМЯ («через сколько»), это не ошибка.
+  if (!wantsTime && wantsKm && !/км|метр/.test(String(answer))
+      && /^\s*[\d,.]+\s*(ч|час[а-яё]*|мин[а-яё]*|сек[а-яё]*)(\s|$)/.test(String(answer).trim())) {
     return { ok: false, hint: 'В вопросе спрашивают расстояние, а ответ получился во времени.' };
   }
   if (wantsTime && /^\s*[\d,.]+\s*км\s*$/.test(String(answer).trim())) {
@@ -612,24 +627,60 @@ addRule({
   run(ctx) {
     // Если спрашивают среднюю скорость — это другое правило, не путаем.
     if (ctx.has(/средн[а-яё]*\s+скорост[а-яё]*/)) return null;
+    // «проехал S за T, сколько за другие T» — отдельное правило (скорость надо сначала найти)
+    if (ctx.qHas(/(?:сколько|какой\s+путь)[^?!.]*за\s*\d/)
+        && ctx.has(/проехал|прош[её]л|проплыл|пролетел|проезжает/)
+        && ctx.byUnit('kmh').length === 0
+        && (String(ctx.text).match(/за\s*\d+/g) || []).length >= 2) return null;
     const words = ctx.has(/(скорост|путь|проехал|прош[её]л|движ|ехал|автомобил|поезд|теплоход|велосипед|пешеход|турист|мот[о]?циклист|км\/ч)/);
     if (!words) return null;
     if (ctx.has(/навстречу|догон|вдогонку|по течению|против течения/)) return null; // отдельные шаблоны
-    const speed = pickSpeed(ctx);
+    const speed = pickSpeed(ctx) || (() => {
+      // «скорость в м/с», «в км/ч» — единица задана в вопросе, числа не нужны
+      if (ctx.qHas(/в\s*м\/с/)) return { value: null, unit: 'м/с' };
+      if (ctx.qHas(/в\s*км\/ч/)) return { value: null, unit: 'км/ч' };
+      if (ctx.qHas(/в\s*м\/мин/)) return { value: null, unit: 'м/мин' };
+      return null;
+    })();
     const time = pickTime(ctx);
     const dist = pickDistance(ctx);
     if (!speed && !time && !dist) return null;
     let unknown = 's';
     if (ctx.qHas(/скорост|с какой скоростью|как.*скорость/)) unknown = 'v';
-    else if (ctx.qHas(/время|часов|минут|за сколько|через сколько|суток|дн/)) unknown = 't';
+    else if (ctx.qHas(/врем[а-яё]*|часов|часа|минут|за сколько|через сколько|суток|дн[а-яё]*/)) unknown = 't';
     else if (ctx.qHas(/путь|расстояни|проех|прош[её]л|километров|метров|длина маршрута/)) unknown = 's';
     // если не хватает двух величин — этот шаблон не подходит
     const known = [speed ? 'v' : null, time ? 't' : null, dist ? 's' : null].filter(Boolean);
     if (!known.includes(unknown) && known.length < 2) return null;
-    const inputs = {
-      v: speed?.value ?? null, t: time?.value ?? null, s: dist?.value ?? null,
-    };
-    const unitHint = { v: speed?.unit || 'км/ч', t: 'ч', s: dist?.unit || 'км' };
+    // Приводим всё к одной системе: либо километры и часы, либо метры и секунды/минуты.
+    let sVal = dist?.value ?? null;
+    let sUnit = dist?.unit || 'км';
+    let vVal = speed?.value ?? null;
+    let vUnit = speed?.unit || 'км/ч';
+    const distM = dist && (dist.unit === 'м' || dist.unit === 'см' || dist.unit === 'мм');
+    const velM = speed && (speed.unit === 'м/с' || speed.unit === 'м/мин' || speed.unit === 'м/ч');
+    if (distM && dist) {
+      sVal = dist.unit === 'см' ? dist.value / 100 : dist.unit === 'мм' ? dist.value / 1000 : dist.value;
+      sUnit = 'м';
+    }
+    if (distM && !velM && speed && speed.value != null) {
+      // расстояние в метрах, скорость в км/ч → метры в час
+      vVal = speed.value * 1000; vUnit = 'м/ч';
+    }
+    if (!distM && velM && speed && speed.value != null) {
+      // расстояние в километрах, скорость в м/с → километры в час
+      vVal = speed.unit === 'м/с' ? speed.value * 3.6 : speed.unit === 'м/мин' ? speed.value * 0.06 : speed.value / 1000;
+      vUnit = 'км/ч';
+    }
+    if (distM && velM && speed && speed.value != null) {
+      // обе в метрах: время считаем в тех же единицах, что скорость, потом в часы
+      const perHour = speed.unit === 'м/с' ? 3600 : speed.unit === 'м/мин' ? 60 : 1;
+      vVal = speed.value * perHour; vUnit = 'м/ч';
+    }
+    const inputs = { v: vVal ?? null, t: time?.value ?? null, s: sVal ?? null };
+    // единица времени ответа: если спрашивают «за сколько минут» — дадим минуты
+    const askMin = ctx.qHas(/минут/);
+    const unitHint = { v: vUnit, t: askMin ? 'мин' : 'ч', s: sUnit };
     let score = 9 + (speed ? 4 : 0) + (time ? 2 : 0) + (dist ? 2 : 0);
     if (ctx.has(/км\/ч/)) score += 2;
     return buildResult(score, {
@@ -639,11 +690,23 @@ addRule({
       notes: ['Если время дано в минутах, оно переведено в часы (t = мин/60).'],
       compute: (v) => {
         let val, steps = [];
-        if (v.v == null) { val = v.s / v.t; steps = [`v = s/t = ${fmt(v.s)} / ${fmt(v.t)} = ${fmt(val)}`]; }
-        else if (v.t == null) { val = v.s / v.v; steps = [`t = s/v = ${fmt(v.s)} / ${fmt(v.v)} = ${fmt(val)}`]; }
+        if (v.v == null) {
+          val = v.s / v.t;
+          // метры и часы в ответе — переводим в запрошенную единицу скорости
+          if (unitHint.s === 'м' && /м\/с/.test(unitHint.v)) { val = val / 3600; steps = [`v = s/t = ${fmt(v.s)} / ${fmt(v.t)} = ${fmt(val * 3600)} м/ч`, `м/ч переводим в м/с: ${fmt(val * 3600)} / 3600 = ${fmt(val)} м/с`]; }
+          else if (unitHint.s === 'м' && /м\/мин/.test(unitHint.v)) { val = val / 60; steps = [`v = s/t = ${fmt(v.s)} / ${fmt(v.t)} = ${fmt(val * 60)} м/ч = ${fmt(val)} м/мин`]; }
+          else steps = [`v = s/t = ${fmt(v.s)} / ${fmt(v.t)} = ${fmt(val)} ${unitHint.v}`];
+        }
+        else if (v.t == null) {
+          val = v.s / v.v;
+          steps = [`t = s/v = ${fmt(v.s)} / ${fmt(v.v)} = ${fmt(val)} ч`];
+          if (askMin) { val = val * 60; steps.push(`${fmt(val / 60)} ч = ${fmt(val)} мин`); }
+        }
         else { val = v.v * v.t; steps = [`s = v·t = ${fmt(v.v)} · ${fmt(v.t)} = ${fmt(val)}`]; }
+        const roundV = Math.abs(val) >= 1 ? Math.round(val * 100) / 100 : Math.round(val * 1000) / 1000;
+        const ansVal = unknown === 'v' ? `${fmt(roundV)}` : answerStr(val, unitHint[unknown]);
         return {
-          answer: answerStr(val, unitHint[unknown === 'v' ? 'v' : unknown]), unit: unitHint[unknown] || '',
+          answer: unknown === 'v' ? `${ansVal} ${unitHint.v}` : ansVal, unit: unitHint[unknown] || '',
           steps: ['Формула равномерного движения: s = v · t', `Известно: v = ${v.v == null ? '?' : fmt(v.v) + ' ' + unitHint.v}, t = ${v.t == null ? '?' : fmt(v.t) + ' ч'}, s = ${v.s == null ? '?' : fmt(v.s) + ' ' + unitHint.s}`, ...steps],
         };
       },
@@ -695,8 +758,14 @@ addRule({
   id: 'pipes_fill',
   name: 'Трубы, бассейн: одна заполняет за a ч, вторая за b ч — за сколько вместе',
   run(ctx) {
-    if (!ctx.has(/труб|бассейн|резервуар|бак\b|наполн|выкач|цистерн/)) return null;
-    const times = ctx.nums.filter((n) => ['h', 'min'].includes(n.unit)).map((n) => hours(n.v, n.unit));
+    // всё, что «делает работу за N часов» вдвоём: трубы, насосы, краны, бригады
+    if (!ctx.has(/труб|бассейн|резервуар|бак\b|наполн|выкач|цистерн|кран[а-яё]*\s+(?:разгруж|подним|налива)|экскаватор|разгруж|выкоп|вспаш|покрас|выполнят\w*\s+работ/)) return null;
+    // «за 9 часов, второй за 18» — у второго числа единица может быть опущена
+    let times = ctx.nums.filter((n) => ['h', 'min'].includes(n.unit)).map((n) => hours(n.v, n.unit));
+    if (times.length < 2) {
+      const loose = ctx.nums.filter((n) => /за\s*$/.test(n.before) || /^\s*(час|ч\b)/.test(n.after));
+      times = [...new Set([...times, ...loose.map((n) => hours(n.v, n.unit === 'min' ? 'min' : 'h'))])];
+    }
     if (times.length < 2) return null;
     const [a, b] = times;
 
@@ -828,7 +897,10 @@ addRule({
     const riskWord = /шанс|вероятност|риск/;
     if (!riskWord.test(ctx.text)) return null;
     // Спрашивают именно «каков шанс / чему равна вероятность»
-    if (!ctx.qHas(/каков\w*\s+шанс|чему равен\w*\s+шанс|какова вероятност|чему равна вероятност|какой шанс|каков риск|какой риск/)) return null;
+    const askedDirectly = ctx.qHas(/каков\w*\s+шанс|чему равен\w*\s+шанс|какова вероятност|чему равна вероятност|какой шанс|каков риск|какой риск|шанс\s+[а-яё]+|процент/);
+    // «у неё шанс 95 процентов… когда остановится сердце» — шанс назван прямо в условии
+    const pctInText = ctx.nums.some((n) => n.unit === 'pct');
+    if (!askedDirectly && !(pctInText && /шанс|вероятност|риск/.test(ctx.text))) return null;
     // Это не «проценты от числа»: там есть «от» или «сколько процентов»
     if (ctx.has(/сколько процентов|процент(?:ов)?\s+от|\d+\s*%\s*от/)) return null;
     // «шанс, что дождя не будет» — считается отдельно (дополнение до 100)
@@ -882,7 +954,7 @@ addRule({
   name: 'Муха (птица, велосипедист) летает между двумя движущимися объектами',
   run(ctx) {
     // Признак: есть третий «летающий» объект со своей скоростью.
-    const flyer = /мух|пчел|пчел|шмел|птиц|вороб|ласточк|голуб|стрекоз|оса\b|собак|велосипедист/;
+    const flyer = /мух|пчел|шмел|птиц|вороб|ласточк|голуб|стрекоз|\bос[аеуы]\b|собак|ракет|самол[её]т|вертолёт|вертолет|беспилотник|чайк|бабочк|жук/;
     if (!flyer.test(ctx.text)) return null;
     if (!ctx.has(/навстречу|встретятся|встреча|догон|вдогон/)) return null;
 
@@ -891,13 +963,15 @@ addRule({
 
     const dist = pickDistance(ctx);
     // Скорость «летуна» — та, что рядом со словами «летит», «летает», «скорость мухи»
-    // Скорость мухи — та, что стоит ближе всего к слову «муха/летит»,
-    // а не просто последняя в списке чисел.
+    // Скорость «летуна» — та, что стоит ближе всего к его названию или к
+    // словам «летит/летает/вылетела», а не просто последняя в списке чисел.
     const flySpeed = ctx.numClosest('мух', ['kmh', 'ms'])
-      ?? ctx.numClosest('летит|летает|летела', ['kmh', 'ms'])
-      ?? ctx.numClosest('пчел|шмел|птиц|вороб|ласточк|голуб|стрекоз|собак', ['kmh', 'ms']);
-    // Две скорости объектов — те, что остались
-    const others = speeds.filter((v) => v !== flySpeed).slice(0, 2);
+      ?? ctx.numClosest('летит|летает|летела|летала|вылетел|пролетит', ['kmh', 'ms'])
+      ?? ctx.numClosest('пчел|шмел|птиц|вороб|ласточк|голуб|стрекоз|собак|ракет поменьше|самол[её]т|вертолёт|вертолет|чайк|бабочк|жук', ['kmh', 'ms'])
+      // запасной вариант: в таких задачах «летун» назван последним
+      ?? speeds[speeds.length - 1];
+    // Две скорости объектов — те, что остались (в порядке появления в тексте)
+    const others = speeds.filter((v) => v !== flySpeed);
     const v1 = others[0] ?? null;
     const v2 = others[1] ?? v1;
     if (v1 == null) return null;
@@ -994,12 +1068,20 @@ addRule({
   id: 'motion_after',
   name: 'Сколько проедет за следующие часы (после уже пройденного пути)',
   run(ctx) {
-    // «ещё через 2 часа», «за следующие 3 часа», «через 1–2 часа»
-    const more = ctx.qHas(/через|следующ|ещё|еще|дальше|остал/);
-    if (!more) return null;
-    // Время «сколько ещё» — последнее время в условии: «…за 6 часов. … через 2 часа»
-    const span = ctx.lastByUnit(['h', 'min']);
+    // «ещё через 2 часа», «за следующие 3 часа», «сколько проедет за 8 ч»
+    // Важно: вопрос должен быть о ПУТИ, а не о времени («через сколько остановится сердце»).
+    const asksDistance = ctx.qHas(/сколько\s*(?:ещё\s*|еще\s*)?(?:км|километров|метров|проедет|проезжает|пройд[её]т|проплыв[её]т|пролетит)|какой\s+путь/);
+    const afterMore = ctx.qHas(/ещё|еще|следующ|дальше|остал/);
+    if (!asksDistance && !afterMore) return null;
+    // «сколько проедет за 8 ч» / «за следующие 2 ч» — берём время из самого вопроса
+    const qSpan = (() => {
+      const m = String(ctx.question || '').match(/(?:за|через|следующ\w*)\s*(\d+(?:[.,]\d+)?)\s*(ч|час[а-яё]*|мин[а-яё]*|сут[а-яё]*)/i);
+      return m ? Number(m[1].replace(',', '.')) : null;
+    })();
+    // иначе — последнее время в условии: «…за 6 часов. … через 2 часа»
+    const span = qSpan ?? ctx.lastByUnit(['h', 'min']);
     if (span == null) return null;
+    const spanUnit = qSpan != null ? 'h' : 'h';
     if (!ctx.has(/проехал|прошёл|прошел|проплыл|пролетел|едет|двига|скорост/)) return null;
 
     // Скорость: либо явная (км/ч), либо из «проехал S за T»
@@ -1014,7 +1096,7 @@ addRule({
     if (speed == null) return null;
 
     const covered = ctx.nums.find((n) => ['km', 'm'].includes(n.unit))?.v ?? null;
-    const dt = hours(span, 'h');
+    const dt = hours(span, spanUnit);
 
     return buildResult(34, {
       matched: 'Путь за следующие часы: s = v · t',
@@ -1042,26 +1124,56 @@ addRule({
   id: 'motion_catchup', name: 'Догоняющее движение',
   run(ctx) {
     if (!ctx.has(/догон|вдогонку|в одном направлении|догнать/)) return null;
-    const speeds = ctx.byUnit('kmh');
+    const speeds = (ctx.byUnit('kmh').length ? ctx.byUnit('kmh') : ctx.byUnit('ms'));
+    if (speeds.length < 2) return null;
+
+    const [vA, vB] = speeds;
+    const slow = Math.min(vA, vB), fast = Math.max(vA, vB);
+    const diff = fast - slow;
+
+    // «через 2 часа за ним выехал» — задержка, даёт фору: s₀ = v_медл · t_задержки
+    const delayU = ctx.numNearU(['через', 'спустя', 'позже', 'раньше'], ['h', 'min'])
+      ?? (() => { const l = ctx.nums.filter((n) => ['h', 'min'].includes(n.unit)).pop(); return l ? { v: l.v, unit: l.unit } : null; })();
+    // единица важна: 15 минут — это 0,25 ч, а не 15 ч
+    const delay = delayU ? hours(delayU.v, delayU.unit === 'min' ? 'min' : 'h') : null;
     const dist = pickDistance(ctx);
-    const time = pickTime(ctx);
-    const v1 = speeds[0] ?? null, v2 = speeds[1] ?? null;
-    if (!dist && !time && !speeds.length) return null;
-    const unknown = ctx.qHas(/за сколько|через сколько|время|часов/) ? 't' : 's';
-    return buildResult(24, {
-      matched: 'Скорость сближения v₂ − v₁',
-      why: ['слова «догонит / в одном направлении»'],
-      inputs: { v1, v2, s: dist?.value ?? null, t: time?.value ?? null }, unknown,
+
+    // расстояние, которое надо сократить
+    let s0 = null;
+    let s0how = '';
+    if (dist) { s0 = dist.value; s0how = `из условия: ${fmt(s0)} км`; }
+    else if (delay != null) { s0 = slow * hours(delay, 'h'); s0how = `${fmt(slow)} · ${fmt(delay)} = ${fmt(s0)} км (фора за ${fmt(delay)} ч)`; }
+    if (s0 == null) return null;
+
+    const t = diff > 0 ? s0 / diff : null;
+    if (t == null) return null;
+
+    return buildResult(38, {
+      matched: 'Догоняющее движение: скорость сближения = разность скоростей',
+      why: ['слова «догонит / вдогонку»', `две скорости: ${fmt(slow)} и ${fmt(fast)} км/ч`,
+        delay != null ? `есть задержка ${fmt(delay)} ч` : 'есть расстояние'],
+      inputs: { v1: slow, v2: fast, s: s0, t: delay },
+      unknown: 't',
       formulaIds: ['motion_catchup', 'motion_s'],
+      notes: ['Пока второй стоит, первый уже уехал вперёд — эту фору и надо догонять.'],
       compute: (v) => {
-        let a = numOr(v.v1, 0), b = numOr(v.v2, 0);
-        if (b < a) [a, b] = [b, a];
-        const diff = b - a;
-        const val = unknown === 't' ? numOr(v.s, 0) / Math.max(diff, 1e-9) : diff * numOr(v.t, 1);
-        return {
-          answer: answerStr(val, unknown === 't' ? 'ч' : 'км'), unit: unknown === 't' ? 'ч' : 'км',
-          steps: ['При движении вдогонку скорость сближения равна разности скоростей.', `vсбл = ${fmt(b)} − ${fmt(a)} = ${fmt(diff)} км/ч`, unknown === 't' ? `t = s / vсбл = ${fmt(v.s)} / ${fmt(diff)} = ${fmt(val)} ч` : `s = vсбл · t = ${fmt(diff)} · ${fmt(v.t ?? 1)} = ${fmt(val)} км`],
-        };
+        const a = numOr(v.v1, 0), b = numOr(v.v2, 0);
+        const d = Math.abs(b - a);
+        const start = numOr(v.s, 0);
+        const time = d > 0 ? start / d : 0;
+        const acts = [
+          { what: 'Скорость сближения', calc: `${fmt(Math.max(a, b))} − ${fmt(Math.min(a, b))} = ${fmt(d)} км/ч` },
+          { what: 'Расстояние, которое надо сократить', calc: s0how },
+          { what: 'Время до догона', calc: `t = ${fmt(start)} / ${fmt(d)} = ${fmt(time)} ч` },
+          { what: 'Проверка', calc: `за ${fmt(time)} ч быстрый проедет ${fmt(Math.max(a, b) * time)} км, медленный — ${fmt(Math.min(a, b) * time)} км, разница ${fmt(d * time)} км` },
+        ];
+        // если в задаче время в минутах, ответ удобнее дать в минутах
+        if (delayU && delayU.unit === 'min') {
+          const mins = time * 60;
+          acts[2].calc = `t = ${fmt(start)} / ${fmt(d)} = ${fmt(time)} ч = ${fmt(mins)} мин`;
+          return { answer: `${fmt(Math.round(mins * 100) / 100)} мин`, unit: 'мин', steps: actionsToSteps(acts) };
+        }
+        return { answer: answerStr(time, 'ч'), unit: 'ч', steps: actionsToSteps(acts) };
       },
     });
   },
@@ -1432,7 +1544,9 @@ function geoUnits(text) {
   if (/(м³|м3|куб\.?\s*м)/.test(t)) return { len: 'м', area: 'м²', vol: 'м³' };
   if (/(см²|см2|кв\.?\s*см)/.test(t)) return { len: 'см', area: 'см²', vol: 'см³' };
   if (/(м²|м2|кв\.?\s*м)/.test(t)) return { len: 'м', area: 'м²', vol: 'м³' };
-  if (/(^|[^а-яё])м(?![а-яё²³])/.test(t)) return { len: 'м', area: 'м²', vol: 'м³' };
+  if (/(^|[^а-яё])м(?![а-яё²³])/.test(t) || /(^|[^а-яё])метр[а-яё]*/.test(t)) return { len: 'м', area: 'м²', vol: 'м³' };
+  if (/(^|[^а-яё])дециметр[а-яё]*/.test(t)) return { len: 'дм', area: 'дм²', vol: 'дм³' };
+  if (/(^|[^а-яё])сантиметр[а-яё]*/.test(t)) return { len: 'см', area: 'см²', vol: 'см³' };
   return { len: 'см', area: 'см²', vol: 'см³' };
 }
 
@@ -1445,7 +1559,11 @@ function geometryRule({ id, name, pattern, ids, vars, formula, answerUnit, unitK
       const clean = [...new Set(nums)];
       if (clean.length < 1) return null;
       const U = geoUnits(ctx.text);
-      const useAlt = alt && ctx.qHas(alt.when);
+      const asksPerimeter = Boolean(alt && ctx.qHas(alt.when));
+      const asksArea = ctx.qHas(/площад|объём|объем/);
+      // «найдите площадь и периметр» — главным считаем то, о чём спросили первым,
+      // второе добавим примечанием, чтобы не терять ответ.
+      const useAlt = asksPerimeter && (!asksArea || (ctx.text.search(alt.when) < ctx.text.search(/площад|объём|объем/)));
       const chosen = useAlt
         ? { ...alt, answerUnit: U[alt.unitKind || 'len'] }
         : { display: FORMULA_BY_ID.get(ids[0])?.display || '', formula, answerUnit: U[unitKind] };
@@ -1458,7 +1576,15 @@ function geometryRule({ id, name, pattern, ids, vars, formula, answerUnit, unitK
         compute: (v) => {
           let val;
           try { val = chosen.formula(v, ctx.text); } catch { return { answer: '—', unit: '', steps: ['Не хватает данных: проверьте известные значения.'] }; }
+          let note = undefined;
+          if (alt && asksPerimeter && asksArea) {
+            const other = useAlt ? { name: name, f: formula, u: U[unitKind] } : { name: alt.name, f: alt.formula, u: U[alt.unitKind || 'len'] };
+            let ov = null;
+            try { ov = other.f(v, ctx.text); } catch { ov = null; }
+            if (Number.isFinite(ov)) note = `В задаче просят и площадь, и периметр. Другая величина: ${other.name.split(':')[0].toLowerCase()} = ${fmt(ov)} ${other.u}.`;
+          }
           return {
+            note,
             answer: answerStr(val, chosen.answerUnit), unit: chosen.answerUnit,
             steps: [`Формула: ${chosen.display}`, `Подставим: ${Object.entries(v).filter(([, x]) => x !== null).map(([k, x]) => `${k} = ${fmt(x)}`).join('; ')}`, `Получим: ${fmt(val)} ${chosen.answerUnit}`],
           };
@@ -1469,11 +1595,43 @@ function geometryRule({ id, name, pattern, ids, vars, formula, answerUnit, unitK
 }
 
 geometryRule({
-  id: 'geometry_rect', name: 'Прямоугольник: площадь и периметр', pattern: /прямоугольник|длина.*ширина|сторон.*прямоуголь/,
+  id: 'geometry_rect', name: 'Прямоугольник: площадь и периметр', pattern: /прямоугольн[а-яё]*|длина.*ширина|сторон.*прямоуголь|\d+\s*(?:м|см|дм)?\s*на\s*\d+\s*(?:метр[а-яё]*|сантиметр[а-яё]*|дециметр[а-яё]*|см|дм|м)(?![а-яё])/,
   ids: ['rect_area', 'rect_perimeter'], vars: ['a', 'b'], answerUnit: 'см²',
   formula: (v) => numOr(v.a, 0) * numOr(v.b, 0),
   alt: { when: /периметр/, name: 'Периметр прямоугольника P = 2(a + b)', display: 'P = 2·(a + b)', formula: (v) => 2 * (numOr(v.a, 0) + numOr(v.b, 0)) },
   score: 18,
+});
+addRule({
+  id: 'square_side', name: 'Квадрат: сторона по площади или периметру',
+  run(ctx) {
+    if (!ctx.has(/квадрат(?!н)/)) return null;
+    if (!ctx.qHas(/сторон/)) return null;
+    // «найдите периметр/площадь» — это не поиск стороны
+    if (ctx.qHas(/периметр|площад/)) return null;
+    // сторона ищется только когда известна площадь или периметр, а не сама сторона
+    if (!ctx.has(/периметр|площад/)) return null;
+    const U = geoUnits(ctx.text);
+    const byP = ctx.has(/периметр/);
+    const num = ctx.nums.filter((n) => !['pct', 'h', 'min', 'sec'].includes(n.unit)).map((n) => n.v)[0];
+    if (!Number.isFinite(num)) return null;
+    const side = byP ? num / 4 : Math.sqrt(num);
+    return buildResult(24, {
+      matched: byP ? 'Сторона квадрата по периметру: a = P/4' : 'Сторона квадрата по площади: a = √S',
+      why: [byP ? 'известен периметр' : 'известна площадь', `дано ${fmt(num)} ${byP ? U.len : U.area}`],
+      inputs: { [byP ? 'P' : 'S']: num }, unknown: 'a',
+      formulaIds: ['square_perimeter', 'square_area'],
+      compute: (v) => {
+        const x = numOr(v[byP ? 'P' : 'S'], num);
+        const a = byP ? x / 4 : Math.sqrt(x);
+        return {
+          answer: `${fmt(Math.round(a * 1e4) / 1e4)} ${U.len}`, unit: U.len,
+          steps: byP
+            ? [`P = 4a, значит a = P/4`, `a = ${fmt(x)} / 4 = ${fmt(a)} ${U.len}`, `Проверка: 4 · ${fmt(a)} = ${fmt(4 * a)} ${U.len} ✓`]
+            : [`S = a², значит a = √S`, `a = √${fmt(x)} = ${fmt(a)} ${U.len}`, `Проверка: ${fmt(a)}² = ${fmt(a * a)} ${U.area} ✓`],
+        };
+      },
+    });
+  },
 });
 geometryRule({
   id: 'geometry_square', name: 'Квадрат: площадь S = a²', pattern: /квадрат(?!н)[а-я]*/,
@@ -1675,7 +1833,9 @@ function parseRemainderConditions(text) {
     if (!out.some((c) => c.key === key)) out.push({ m: mod, r: rem, key });
   };
   // «при делении на 3 даёт остаток 1», «делится на 4 с остатком 3»
-  for (const m of text.matchAll(/н[ао]\s*(\d+)\s*(?:даёт|дает|даст|получается|в остатке|остаток|с остатком|остатке)?[^.;]*?остат(?:ок|ке|ком)\s*(?:равен|равный|—|-|:)?\s*(\d+)/g)) push(m[1], m[2]);
+  for (const m of text.matchAll(/н[ао]\s*(\d+)\s*(?:даёт|дает|даст|получается|в остатке|остаток|с остатком|остатке)?[^.;,]{0,40}?остат(?:ок|ке|ком)\s*(?:равен|равный|—|-|:)?\s*(\d+)/g)) push(m[1], m[2]);
+  // «остаток 2 при делении на 3», «дающее остаток 2 при делении на 3»
+  for (const m of text.matchAll(/остат(?:ок|ке|ком|ки)?\s*(?:равен|равный|—|-|:)?\s*(\d+)\s*(?:при|от)?\s*делени[а-яё]*\s*н[ао]\s*(\d+)/g)) push(m[2], m[1]);
   // «остаток при делении на 5 равен 2»
   for (const m of text.matchAll(/остат(?:ок|ке|ком)\s*(?:при делении)?\s*н[ао]\s*(\d+)\s*(?:равен|равный|—|-|:)?\s*(\d+)/g)) push(m[1], m[2]);
   // короткая запись «на 3 остаток 1», «÷3 → 1», «mod 3 = 1»
@@ -2205,6 +2365,8 @@ addRule({
   id: 'word_two_parts', name: 'Две части с условием «на … больше» и «всего …»',
   run(ctx) {
     if (!ctx.has(/(на \d+.*больше|на \d+.*меньше|в \d+.*раза.*больше|всего|вместе)/)) return null;
+    // Это задача о совместной работе («за сколько вдвоём») — её берёт другое правило
+    if (ctx.has(/за сколько|через сколько|труб|бассейн|насос|кран.*разгруж|разгруз|экскаватор|вспаш|выкоп|покрас/)) return null;
     const nums = ctx.values('').filter((v) => v > 0);
     if (nums.length < 2) return null;
     const total = ctx.numNear(['всего', 'вместе', 'составило', 'было продано'], ['']) ?? nums[nums.length - 1];
@@ -2457,6 +2619,7 @@ export function solveTask(raw, options = {}) {
     notes: [
       ...(best.notes || []),
       ...(main.notes || []),
+      ...(main.note ? [main.note] : []),
       ...(sanity.ok ? [] : [`Возможно, шаблон подобран неверно: ${sanity.hint} Проверьте, что именно спрашивают в задаче.`]),
     ],
     formulaIds: best.formulaIds || [],
