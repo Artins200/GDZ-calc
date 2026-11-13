@@ -2,3 +2,4 @@ node_modules/
 __t.mjs
 __app_for_test.mjs
 .DS_Store
+js/__*.mjs

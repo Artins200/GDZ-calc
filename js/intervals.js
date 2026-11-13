@@ -249,12 +249,12 @@ export function numberLineSVG(items, opts = {}) {
     };
     if (hasL) {
       out += `<line x1="${xl}" y1="${y}" x2="${xl}" y2="${axisY - 5}" stroke="${color}" stroke-width="1.5"/>`;
-      out += dot(xl, axisY, iv.left.closed, color);
+      out += dot(xl, axisY, iv.left.closed, color, opts.fill !== false);
       out += endLabel(xl, L, opts.letters ? 'a' : null);
     }
     if (hasR) {
       out += `<line x1="${xr}" y1="${y}" x2="${xr}" y2="${axisY - 5}" stroke="${color}" stroke-width="1.5"/>`;
-      out += dot(xr, axisY, iv.right.closed, color);
+      out += dot(xr, axisY, iv.right.closed, color, opts.fill !== false);
       out += endLabel(xr, R, opts.letters ? 'b' : null);
     }
     if (it.label) {
@@ -266,10 +266,18 @@ export function numberLineSVG(items, opts = {}) {
   return out;
 }
 
-function dot(x, y, closed, color) {
-  return closed
-    ? `<circle cx="${x}" cy="${y}" r="4.6" fill="${color}" stroke="#fff" stroke-width="0.8"/>`
-    : `<circle cx="${x}" cy="${y}" r="4.6" fill="#fffdf8" stroke="${color}" stroke-width="2"/>`;
+/**
+ * Точка на оси. closed — конец входит в промежуток, fill — закрашивать ли её
+ * (настройка «закрашивать конец» в приложении; по умолчанию да, как в учебнике).
+ */
+function dot(x, y, closed, color, fill = true) {
+  if (!closed) {
+    return `<circle cx="${x}" cy="${y}" r="4.6" fill="#fffdf8" stroke="${color}" stroke-width="2"/>`;
+  }
+  if (!fill) {
+    return `<circle cx="${x}" cy="${y}" r="4.6" fill="none" stroke="${color}" stroke-width="2"/>`;
+  }
+  return `<circle cx="${x}" cy="${y}" r="4.6" fill="${color}" stroke="#fff" stroke-width="0.8"/>`;
 }
 function niceStep(raw) {
   const p = Math.pow(10, Math.floor(Math.log10(Math.max(raw, 1e-6))));
