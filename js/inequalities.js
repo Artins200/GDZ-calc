@@ -719,7 +719,81 @@ export function longArithmetic(a, b, op) {
   }
 
   if (op === '*') return mulColumns(A, B);
+  if (op === '/') return divideAngle(A, B);
   return null;
+}
+
+/**
+ * Деление уголком — как в тетради:
+ *
+ *       _768 │24
+ *         72 │──
+ *         ──  │32
+ *          48 │
+ *          48 │
+ *          ── │
+ *           0 │
+ *
+ * Возвращает { lines, value, quotient, remainder, negative }: lines — готовые
+ * строки для моноширинного шрифта, remainder — остаток (0 при делении нацело).
+ */
+export function divideAngle(a, b) {
+  const A = Math.abs(Number(a)), B = Math.abs(Number(b));
+  if (!Number.isFinite(A) || !Number.isFinite(B) || B === 0) return null;
+  const negative = Math.sign(a) * Math.sign(b) < 0;
+
+  if (!Number.isInteger(A) || !Number.isInteger(B)) {
+    const value = A / B;
+    return {
+      lines: [`${fmtPretty(a)} ÷ ${fmtPretty(b)} = ${fmtPretty(value)}`],
+      value, quotient: fmt(value), remainder: 0, negative, kind: 'division',
+    };
+  }
+
+  const digits = String(A).split('');
+  const quotient = String(Math.floor(A / B));
+  const steps = [];
+  let acc = 0;
+  let started = false;
+
+  for (let i = 0; i < digits.length; i++) {
+    acc = acc * 10 + Number(digits[i]);
+    if (!started && acc < B) continue;
+    started = true;
+    const q = Math.floor(acc / B);
+    if (q === 0) continue;
+    const product = q * B;
+    const rest = acc - product;
+    steps.push({ cur: acc, product, rest, col: i + 1 - String(product).length });
+    acc = rest;
+    if (rest === 0) break;
+  }
+
+  // левая колонка: «_768», вычитаемые и подчёркивания
+  const left = [`_${A}`];
+  steps.forEach((st, idx) => {
+    if (idx > 0) left.push(' '.repeat(st.col) + String(st.cur));
+    left.push(' '.repeat(st.col) + '−' + st.product);
+    left.push(' '.repeat(st.col) + '─'.repeat(String(st.product).length));
+  });
+  // остаток печатаем, только если он не ноль (иначе получается лишняя строка)
+  if (steps.length && acc !== 0) {
+    left.push(' '.repeat(Math.max(0, digits.length - String(acc).length)) + String(acc));
+  }
+  if (!steps.length) left.push(' '.repeat(Math.max(0, digits.length - String(acc).length)) + String(acc));
+
+  const leftWidth = Math.max(...left.map((l) => l.length)) + 1;
+  const right = [String(B), '─'.repeat(quotient.length + 2), quotient];
+  const lines = left.map((l, i) => `${l.padEnd(leftWidth)}│${right[i] || ''}`);
+
+  return {
+    lines,
+    value: A / B,
+    quotient,
+    remainder: acc,
+    negative,
+    kind: 'division',
+  };
 }
 
 const fmtPretty = (n) => fmt(Math.abs(n) < 1e-12 ? 0 : n);

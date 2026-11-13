@@ -7,7 +7,7 @@ import {
 import { FORMULAS, STATS, formulaSearch } from '../js/formulas.js';
 import { parseInterval, intersect, union, numberLineSVG, describeInterval } from '../js/intervals.js';
 import { solveTask, TASK_EXAMPLES, RULE_COUNT, recomputeWith } from '../js/tasks.js';
-import { solveInequality, longArithmetic } from '../js/inequalities.js';
+import { solveInequality, longArithmetic, divideAngle } from '../js/inequalities.js';
 
 let passed = 0;
 const ok = (name, fn) => {
@@ -401,6 +401,46 @@ ok('столбик: сложение, вычитание и умножение �
     near(r.value, expected);
     assert.ok(r.lines.length >= 4, `${a} ${op} ${b}: мало строк`);
   }
+});
+
+/* ----------------------------------- задачи «на подумать» */
+ok('муха между грузовиками: ответ 300 км, а не время', () => {
+  const text = 'Два грузовика выехали навстречу друг другу из двух городов, расстояние между которыми составляет 300 км. '
+    + 'Первый грузовик едет со скоростью 60 км/ч, а второй — со скоростью 40 км/ч. '
+    + 'Вместе с первым грузовиком вылетела муха, которая летит со скоростью 100 км/ч. '
+    + 'Она долетает до второго грузовика, разворачивается и летит обратно к первому, и так далее, пока грузовики не встретятся. '
+    + 'Вопрос: Сколько километров успеет пролететь муха до того момента, как грузовики встретятся?';
+  const s = solveTask(text);
+  assert.match(String(s.answer), /^300/);
+  assert.ok(s.steps.some((x) => /3 ч/.test(x)), 'в шагах должно быть время 3 ч');
+});
+
+ok('встречное движение: время и путь считаются', () => {
+  assert.match(String(solveTask('Два велосипедиста выехали навстречу друг другу, расстояние между ними 60 км. Скорость первого 15 км/ч, второго 5 км/ч. Сколько времени до встречи?').answer), /^3/);
+  assert.match(String(solveTask('Из двух городов, расстояние между которыми 500 км, одновременно навстречу друг другу вышли два поезда со скоростями 60 и 40 км/ч. Через сколько часов они встретятся?').answer), /^5/);
+});
+
+ok('движение с задержкой и «сколько ещё через N часов»', () => {
+  const delay = solveTask('Из пункта А в пункт Б, расстояние 120 км, выехал автомобиль со скоростью 80 км/ч. Через 1 час навстречу ему выехал второй со скоростью 100 км/ч. Через сколько часов они встретятся?');
+  assert.match(String(delay.answer), /^1,2/);
+
+  const more = solveTask('Турист проехал 600 км за 6 часов. Сколько километров он проедет ещё через 2 часа?');
+  assert.match(String(more.answer), /^200/);
+
+  const more2 = solveTask('Поезд проехал 400 км, его скорость 80 км/ч. Сколько он проедет ещё через 3 часа?');
+  assert.match(String(more2.answer), /^240/);
+});
+
+ok('деление уголком: 768 ÷ 24 = 32 и остаток', () => {
+  const r = divideAngle(768, 24);
+  assert.equal(r.quotient, '32');
+  assert.equal(r.remainder, 0);
+  assert.ok(r.lines.length >= 5, 'мало строк в записи');
+  assert.ok(r.lines[0].includes('768'), r.lines[0]);
+
+  const rem = divideAngle(100, 7);
+  assert.equal(rem.quotient, '14');
+  assert.equal(rem.remainder, 2);
 });
 
 console.log(`\nПройдено: ${passed} проверок\n`);

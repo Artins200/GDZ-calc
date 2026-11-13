@@ -5,7 +5,7 @@ import { fmt, fmtSmart, fmtPlain, solveFormula, evaluate, substituteText, checkI
 import { FORMULAS, FORMULA_BY_ID, CHAPTER_BY_ID, BOOK, STATS, formulaSearch } from './formulas.js';
 import { solveTask, recomputeWith } from './tasks.js';
 import { parseInterval, describeInterval, numberLineSVG, intersect, union } from './intervals.js';
-import { solveInequality, longArithmetic } from './inequalities.js';
+import { solveInequality, longArithmetic, divideAngle } from './inequalities.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -272,9 +272,23 @@ function renderLong(value) {
   const chain = simpleChain(longSource || expr);
   let html = '';
 
-  if (chain && longArithmetic(chain.a, chain.b, chain.op)) {
+  if (chain && chain.op === '/') {
+    // Деление — уголком, как в тетради
+    const r = divideAngle(chain.a, chain.b);
+    const opSign = '÷';
+    if (r) {
+      const lines = r.lines.map((l) => esc(l)).join('\n');
+      html += `<div class="col-step">
+        <div class="col-cap">${esc(fmt(chain.a))} ${opSign} ${esc(fmt(chain.b))} = ${esc(r.quotient)}${r.remainder ? ` (остаток ${esc(fmt(r.remainder))})` : ''}</div>
+        <div class="col-lines">${lines}</div>
+        ${r.remainder
+          ? `<div class="col-note">Нацело не делится: ${esc(fmt(chain.a))} = ${esc(fmt(chain.b))} · ${esc(r.quotient)} + ${esc(fmt(r.remainder))}</div>`
+          : `<div class="col-note">Проверка: ${esc(fmt(chain.b))} · ${esc(r.quotient)} = ${esc(fmt(chain.a))}</div>`}
+      </div>`;
+    }
+  } else if (chain && longArithmetic(chain.a, chain.b, chain.op)) {
     const r = longArithmetic(chain.a, chain.b, chain.op);
-    const opSign = { '+': '+', '-': '−', '*': '×', '/': '÷' }[chain.op];
+    const opSign = { '+': '+', '-': '−', '*': '×' }[chain.op];
     const lines = r.lines.map((l) => esc(l)).join('\n');
     html += `<div class="col-step">
       <div class="col-cap">${esc(fmt(chain.a))} ${opSign} ${esc(fmt(chain.b))}</div>
@@ -303,6 +317,7 @@ function simpleCheck(value) {
   const chain = simpleChain(longSource || expr);
   if (!chain) return '';
   if (chain.op === '/') return `${fmt(value)} · ${fmt(chain.b)} = ${fmt(Math.round(value * chain.b * 1e10) / 1e10)}`;
+
   if (chain.op === '+') return `${fmt(value)} − ${fmt(chain.b)} = ${fmt(chain.a)}`;
   if (chain.op === '-') return `${fmt(value)} + ${fmt(chain.b)} = ${fmt(chain.a)}`;
   if (chain.op === '*') return `${fmt(value)} ÷ ${fmt(chain.b)} = ${fmt(chain.a)}`;

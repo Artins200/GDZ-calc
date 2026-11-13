@@ -138,9 +138,33 @@ function makeContext(raw) {
     qHas: (re) => (typeof re === 'string' ? question.includes(re) : re.test(question)),
     byUnit: (u) => nums.filter((n) => n.unit === u).map((n) => n.v),
     values: (u) => nums.filter((n) => !u || n.unit === u).map((n) => n.v),
+    /** Последнее число с такими единицами (для «сколько ещё через …»). */
+    lastByUnit: (units = []) => {
+      const c = [...nums].reverse().find((n) => !units.length || units.includes(n.unit));
+      return c ? c.v : null;
+    },
     first: (u, exclude = []) => {
       const c = nums.find((n) => n.unit === u && !exclude.includes(n.v));
       return c ? c.v : null;
+    },
+    /** Число с указанной единицей, ближайшее к упоминанию слова (в символах текста). */
+    numClosest: (word, units = []) => {
+      const re = new RegExp(word, 'gi');
+      const spots = [];
+      let m;
+      while ((m = re.exec(text)) !== null) spots.push(m.index);
+      if (!spots.length) return null;
+      const pool = nums.filter((n) => !units.length || units.includes(n.unit));
+      let best = null, bestDist = Infinity;
+      for (const n of pool) {
+        const at = text.indexOf(String(n.v));
+        if (at < 0) continue;
+        for (const spot of spots) {
+          const d = Math.abs(spot - at);
+          if (d < bestDist) { bestDist = d; best = n; }
+        }
+      }
+      return best ? best.v : null;
     },
     numNear: (words, units = []) => {
       const c = nums.find((n) => words.some((w) => {
@@ -552,6 +576,167 @@ addRule({
             unknown === 't'
               ? `t = s / vсбл = ${fmt(v.s)} / ${fmt(a + b)} = ${fmt(val)} ч`
               : `s = vсбл · t = ${fmt(a + b)} · ${fmt(v.t ?? 1)} = ${fmt(val)} км`,
+          ],
+        };
+      },
+    });
+  },
+});
+
+/* ---- 10б. Муха между двумя движущимися объектами ---- */
+addRule({
+  id: 'fly_between',
+  name: 'Муха (птица, велосипедист) летает между двумя движущимися объектами',
+  run(ctx) {
+    // Признак: есть третий «летающий» объект со своей скоростью.
+    const flyer = /мух|пчел|пчел|шмел|птиц|вороб|ласточк|голуб|стрекоз|оса\b|собак|велосипедист/;
+    if (!flyer.test(ctx.text)) return null;
+    if (!ctx.has(/навстречу|встретятся|встреча|догон|вдогон/)) return null;
+
+    const speeds = ctx.byUnit('kmh').concat(ctx.byUnit('ms'));
+    if (speeds.length < 3) return null;
+
+    const dist = pickDistance(ctx);
+    // Скорость «летуна» — та, что рядом со словами «летит», «летает», «скорость мухи»
+    // Скорость мухи — та, что стоит ближе всего к слову «муха/летит»,
+    // а не просто последняя в списке чисел.
+    const flySpeed = ctx.numClosest('мух', ['kmh', 'ms'])
+      ?? ctx.numClosest('летит|летает|летела', ['kmh', 'ms'])
+      ?? ctx.numClosest('пчел|шмел|птиц|вороб|ласточк|голуб|стрекоз|собак', ['kmh', 'ms']);
+    // Две скорости объектов — те, что остались
+    const others = speeds.filter((v) => v !== flySpeed).slice(0, 2);
+    const v1 = others[0] ?? null;
+    const v2 = others[1] ?? v1;
+    if (v1 == null) return null;
+
+    const closing = v1 + v2;
+    const meets = dist ? dist.value / closing : null;
+
+    return buildResult(40, {
+      matched: 'Муха и два объекта: время до встречи × скорость мухи',
+      why: [
+        'в задаче есть третье «летающее» тело со своей скоростью',
+        'найдено расстояние между объектами',
+        'найдены скорости обоих объектов и скорость мухи',
+      ],
+      inputs: { v1, v2, s: dist?.value ?? null, vfly: flySpeed },
+      unknown: 's_fly',
+      formulaIds: ['motion_towards', 'motion_s'],
+      notes: [
+        'Главная мысль: муха летает ровно столько времени, сколько грузовики едут до встречи. Считать её «туда-обратно» не нужно.',
+      ],
+      compute: (v) => {
+        const a = numOr(v.v1, 0), b = numOr(v.v2, a), fly = numOr(v.vfly, 0);
+        const close = a + b;
+        const t = v.s != null ? v.s / close : (meets ?? 0);
+        const path = fly * t;
+        return {
+          answer: answerStr(path, 'км'), unit: 'км',
+          steps: [
+            'Муха всё время в воздухе — значит она летит столько же, сколько едут грузовики до встречи.',
+            `Скорость сближения грузовиков: v = ${fmt(a)} + ${fmt(b)} = ${fmt(close)} км/ч`,
+            `Время до встречи: t = s / v = ${fmt(v.s ?? 0)} / ${fmt(close)} = ${fmt(t)} ч`,
+            `За это время муха пролетит: s = ${fmt(fly)} · ${fmt(t)} = ${fmt(path)} км`,
+            'Обратный путь мухи считать не надо: важна только её скорость и общее время.',
+          ],
+        };
+      },
+    });
+  },
+});
+
+/* ---- 10в. Движение с задержкой (один выехал позже) ---- */
+addRule({
+  id: 'motion_delay',
+  name: 'Движение с задержкой: один объект выехал позже',
+  run(ctx) {
+    // «… выехал второй», «вслед за ним», «догонит»
+    const chases = ctx.has(/вдогон|догон|догонит|вслед за ним|вслед/);
+    const delayWords = ctx.has(/через\s+\d|спустя|позже|задерж|раньше/);
+    if (!delayWords) return null;
+    if (chases) return null; // догон обрабатывается отдельным шаблоном
+    if (!ctx.has(/навстречу|встрет/)) return null;
+
+    const speeds = ctx.byUnit('kmh').concat(ctx.byUnit('ms'));
+    if (speeds.length < 2) return null;
+    const dist = pickDistance(ctx);
+    const delay = ctx.numNear(['через', 'спустя', 'позже', 'задерж'], ['h', 'min']);
+    if (delay == null) return null;
+
+    const [v1, v2] = speeds;
+    return buildResult(36, {
+      matched: 'Встречное движение, но один выехал позже',
+      why: ['слово «навстречу»', 'есть задержка выезда', 'две скорости'],
+      inputs: { v1, v2, s: dist?.value ?? null, t: delay },
+      unknown: 't2',
+      formulaIds: ['motion_towards', 'motion_s'],
+      compute: (v) => {
+        const a = numOr(v.v1, 0), b = numOr(v.v2, a), d = numOr(v.t, 0);
+        const covered = a * d;                    // кто выехал раньше — уже проехал
+        const left = Math.max(0, numOr(v.s, 0) - covered);
+        const t2 = left / (a + b);
+        // Если спрашивают «через сколько часов они встретятся» — считаем от
+        // выезда первого, то есть прибавляем время ожидания.
+        const fromStart = ctx.qHas(/встрет|когда/) && !ctx.qHas(/после выезда второго/);
+        const answer = fromStart ? t2 + d : t2;
+        return {
+          answer: answerStr(answer, 'ч'), unit: 'ч',
+          steps: [
+            `Первый выехал раньше на ${fmt(d)} ч и успел проехать ${fmt(a)} · ${fmt(d)} = ${fmt(covered)} км`,
+            `Осталось расстояние: ${fmt(numOr(v.s, 0))} − ${fmt(covered)} = ${fmt(left)} км`,
+            `Теперь едут навстречу со скоростью сближения ${fmt(a)} + ${fmt(b)} = ${fmt(a + b)} км/ч`,
+            `От выезда второго до встречи: t = ${fmt(left)} / ${fmt(a + b)} = ${fmt(t2)} ч`,
+            fromStart
+              ? `От самого начала: ${fmt(d)} + ${fmt(t2)} = ${fmt(answer)} ч`
+              : `Ответ: ${fmt(answer)} ч после выезда второго`,
+          ],
+        };
+      },
+    });
+  },
+});
+
+/* ---- 10г. «Сколько проедет ещё через 1–2 часа» ---- */
+addRule({
+  id: 'motion_after',
+  name: 'Сколько проедет за следующие часы (после уже пройденного пути)',
+  run(ctx) {
+    // «ещё через 2 часа», «за следующие 3 часа», «через 1–2 часа»
+    const more = ctx.qHas(/через|следующ|ещё|еще|дальше|остал/);
+    if (!more) return null;
+    // Время «сколько ещё» — последнее время в условии: «…за 6 часов. … через 2 часа»
+    const span = ctx.lastByUnit(['h', 'min']);
+    if (span == null) return null;
+    if (!ctx.has(/проехал|прошёл|прошел|проплыл|пролетел|едет|двига|скорост/)) return null;
+
+    // Скорость: либо явная (км/ч), либо из «проехал S за T»
+    let speed = ctx.byUnit('kmh')[0] ?? null;
+    if (speed == null) {
+      const path = ctx.nums.find((n) => ['km', 'm'].includes(n.unit));
+      // «за 6 часов» — то время, перед которым стоит предлог «за»
+      const time = ctx.nums.find((n) => ['h', 'min'].includes(n.unit) && /за\s*$/.test(n.before))
+        || ctx.nums.find((n) => ['h', 'min'].includes(n.unit) && n !== path);
+      if (path && time) speed = path.v / hours(time.v, time.unit);
+    }
+    if (speed == null) return null;
+
+    const covered = ctx.nums.find((n) => ['km', 'm'].includes(n.unit))?.v ?? null;
+    const dt = hours(span, 'h');
+
+    return buildResult(34, {
+      matched: 'Путь за следующие часы: s = v · t',
+      why: ['вопрос «сколько ещё через … часов»', 'скорость найдена', covered != null ? 'известен уже пройденный путь' : ''],
+      inputs: { v: speed, s: covered, t: dt },
+      unknown: 's_more',
+      formulaIds: ['motion_s'],
+      compute: (v) => {
+        const path = numOr(v.v, 0) * numOr(v.t, 1);
+        return {
+          answer: answerStr(path, 'км'), unit: 'км',
+          steps: [
+            `Скорость: ${fmt(numOr(v.v, 0))} км/ч`,
+            `За следующие ${fmt(numOr(v.t, 1))} ч: s = v · t = ${fmt(numOr(v.v, 0))} · ${fmt(numOr(v.t, 1))} = ${fmt(path)} км`,
+            v.s != null ? `Всего за поездку тогда: ${fmt(v.s)} + ${fmt(path)} = ${fmt(numOr(v.s, 0) + path)} км` : 'Уже пройденный путь для этого ответа не нужен',
           ],
         };
       },
