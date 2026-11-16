@@ -8,7 +8,7 @@
 <meta name="theme-color" content="#0e1013">
 <meta name="color-scheme" content="dark">
 <link rel="stylesheet" href="styles.css">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><rect width='32' height='32' rx='7' fill='%23171a1e'/><text x='16' y='23' font-size='19' text-anchor='middle' fill='%23ff9f0a' font-family='Georgia'>∑</text></svg>">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><defs><linearGradient id='g' x1='0' y1='0' x2='0' y2='1'><stop offset='0' stop-color='%2320232a'/><stop offset='1' stop-color='%230d0f13'/></linearGradient></defs><rect width='32' height='32' rx='8' fill='url(%23g)'/><path d='M6 24C9 11 12 8 16 8s7 3 10 16' fill='none' stroke='%23ff9f0a' stroke-width='3.2' stroke-linecap='round'/><path d='M15.5 24.5l3-3 4.5 4.5' fill='none' stroke='%2337d399' stroke-width='3' stroke-linecap='round' stroke-linejoin='round'/></svg>">
 </head>
 <body data-screen="calc">
 
@@ -124,7 +124,10 @@ A ∪ B">A ∩ B, A ∪ B</button>
       <div class="panel">
         <label class="field-label" for="task-input">Условие задачи</label>
         <textarea id="task-input" rows="4" placeholder="Вставьте текст задачи" autocomplete="off"></textarea>
-        <button class="btn primary wide" id="task-solve">Решить</button>
+        <div class="calc-row">
+          <input class="input" type="text" id="task-user-answer" inputmode="decimal" placeholder="Ваш ответ (необязательно)" autocomplete="off" aria-label="Ваш ответ">
+          <button class="btn primary" id="task-solve">Решить</button>
+        </div>
         <div class="out" id="task-result"></div>
       </div>
     </section>

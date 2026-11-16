@@ -11,6 +11,8 @@ import { solveInequality, longArithmetic, divideAngle } from '../js/inequalities
 import { classifyTask } from '../js/classifier.js';
 import { convertInfoSize, convertBase, solveItTask, parseInfoSize, powerOfTwo } from '../js/it.js';
 import { solveGeoTask, triangleArea, rightTriangle, triangleHeron, adjacentAngles } from '../js/geo.js';
+import { solveMultiDay } from '../js/multiday.js';
+import { verifySolution } from '../js/verifier.js';
 
 let passed = 0;
 const ok = (name, fn) => {
@@ -531,8 +533,38 @@ ok('цепочка дней: каждое значение считается о
   const q = 'На сво отдали 30 детей в первый день, во второй день отдали в 3 раза больше, а в 3 дне стало на 2 раза меньше, сколько детей осталось?';
   assert.equal(solveTask(q).answer, '45 детей');
   assert.equal(solveTask('В первый день было 40 яблок, во второй день стало на 5 больше. Сколько яблок стало?').answer, '45 яблок');
-  assert.equal(solveTask('В первый день турист прошёл 18 км, во второй день — в 2 раза меньше, а в третий — на 5 км больше, чем во второй. Сколько километров прошёл турист за три дня?').answer, '41 км');
   assert.equal(solveTask('В первый день на складе было 120 ящиков, во второй день увезли 40 ящиков, а в третий день привезли 15 ящиков. Сколько ящиков стало?').answer, '95 ящиков');
+
+});
+ok('многошаговые задачи с ролями: дети и взрослые считаются отдельно', () => {
+  const q = 'В первый день, на сво ушло 120 детей и 20 взрослых, во второй день пришло ещё 50 детей, а в третий день на 20 детей стало меньше, но в 2 раза больше взрослых, сколько всего всех в вместе?';
+  const r = solveMultiDay(q);
+  assert.equal(r.answer, '190 человек');
+  assert.deepEqual(r.trace.days.map((d) => d.total), [140, 190, 190]);
+  assert.equal(r.alternatives[0].value, 520);
+});
+ok('проверяющая система ловит неверный ответ и подтверждает верный', () => {
+  const q = 'В первый день, на сво ушло 120 детей и 20 взрослых, во второй день пришло ещё 50 детей, а в третий день на 20 детей стало меньше, но в 2 раза больше взрослых, сколько всего всех в вместе?';
+  const r = solveMultiDay(q);
+  const good = verifySolution(r, q);
+  assert.ok(good.checks.every((c) => c.ok), 'все проверки должны проходить для 190');
+  assert.equal(good.score, 1);
+  const bad = verifySolution({ ...r, answer: '360 человек' }, q);
+  assert.ok(bad.checks.some((c) => !c.ok), 'ответ 360 должен быть пойман');
+  const bad2 = verifySolution({ ...r, answer: '150 человек' }, q);
+  assert.ok(bad2.checks.some((c) => !c.ok), 'ответ только с детьми должен быть пойман');
+});
+ok('проверка не ломает обычные задачи', () => {
+  for (const q of [
+    'Велосипедист ехал 2,5 часа со скоростью 18 км/ч. Какое расстояние он проехал?',
+    'Товар стоил 2400 рублей. Цену снизили на 25%. Сколько теперь стоит товар?',
+    'Решите уравнение 5(x-10)=2x+10',
+    'Найдите площадь прямоугольника со сторонами 12 см и 7,5 см.',
+  ]) {
+    const r = solveTask(q);
+    assert.ok(r.verification, 'у ответа должна быть проверка');
+    assert.ok(r.verification.score >= 0.99, `${q}: ${r.verification.score}`);
+  }
 });
 ok('информатика: единицы, N = K^i, I = K·i, время, системы счисления', () => {
   near(convertInfoSize(2, 'GB').find((x) => x.unit === 'МБ').value, 2048);

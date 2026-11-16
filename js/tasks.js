@@ -13,7 +13,9 @@ import { FORMULAS, FORMULA_BY_ID, formulaSearch } from './formulas.js';
 import { predictFamily } from './dispatcher.js';
 import { FAMILY_BY_RULE } from './families.js';
 import { parseInterval, describeInterval, numberLineSVG, intersect, union } from './intervals.js';
-import { solveTopicTask, solveMultiDayQuantity } from './topic-solvers.js';
+import { solveTopicTask } from './topic-solvers.js';
+import { solveMultiDay, looksLikeMultiDay } from './multiday.js';
+import { verifySolution, detectQuestionKind } from './verifier.js';
 import { solveItTask } from './it.js';
 import { solveGeoTask } from './geo.js';
 
@@ -2754,13 +2756,17 @@ export function solveTask(raw, options = {}) {
       return cardToSolution(card, 'geometry');
     }
   }
-  const multiDay = solveMultiDayQuantity(raw);
-  if (multiDay) return { ...multiDay, confidence: 99, rawSteps: multiDay.steps, steps: toActions(multiDay.steps), checks: multiDay.checks || [], variants: [], notes: multiDay.notes || [], inputs: {}, related: [], formulaIds: [] };
+  const multiDay = solveMultiDay(raw);
+  if (multiDay) {
+    const sol = { ...multiDay, confidence: 99, rawSteps: multiDay.steps, steps: toActions(multiDay.steps), checks: multiDay.checks || [], variants: [], notes: multiDay.notes || [], inputs: {}, related: [], formulaIds: [] };
+    sol.verification = verifySolution(sol, raw);
+    return sol;
+  }
   const topic = solveTopicTask(raw);
   if (topic) return { ...topic, confidence: 95, steps: toActions(topic.steps), rawSteps: topic.steps, checks: topic.checks || [], variants: [], notes: topic.notes || [], inputs: topic.inputs || {}, related: [], formulaIds: [] };
   const ctx = makeContext(raw);
   // Не отдаём многошаговую задачу простому шаблону «часть и часть».
-  if (hasDayChain(raw) && !ctx.qHas(/част|долю|каждую часть/)) {
+  if (hasDayChain(raw) && looksLikeMultiDay(raw) && !ctx.qHas(/част|долю|каждую часть/)) {
     return noReliableAnswer(raw);
   }
   const attempts = [];
@@ -2851,7 +2857,7 @@ export function solveTask(raw, options = {}) {
   // Ответ противоречит вопросу — честно предупреждаем, а не выдаём как верный.
   const sanity = sanityCheck(ctx.question, main.answer, main.unit || '');
 
-  return {
+  const result = {
     ...base,
     bestId: best.id,
     hint: hint && hint.p >= 0.45 ? { family: hint.family, p: hint.p, top: hint.top } : null,
@@ -2887,6 +2893,8 @@ export function solveTask(raw, options = {}) {
     draw: best.draw || null,
     compute: best.compute,
   };
+  result.verification = verifySolution(result, raw);
+  return result;
 }
 
 /** Пересчёт с изменёнными пользователем числами. */

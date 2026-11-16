@@ -1,5 +1,6 @@
 /* Deterministic algorithmic solvers for common grades 7–11 exercises. */
 import { evaluate, fmt, solveQuadratic, preprocess } from './mathcore.js';
+import { detectQuestionKind } from './verifier.js';
 const tidy = s => String(s).replace(/[−–—]/g,'-').replace(/,/g,'.').replace(/²/g,'^2').replace(/³/g,'^3').replace(/·/g,'*').replace(/×/g,'*');
 const nums = s => [...String(s).matchAll(/[-+]?\d+(?:[.,]\d+)?/g)].map(m=>Number(m[0].replace(',','.')));
 const result = (answer, steps, topic, checks=[]) => ({ok:true,answer:String(answer),steps,checks,topic,inputs:{},notes:[],related:[]});
@@ -20,150 +21,246 @@ function equationTask(s) {
  * ---------------------------------------------------------------------- */
 const DAY_MARK = /(?:перв|втор|трет|четверт|пят|шест|седьм|восьм|девят|десят)[а-яё]*\s*(?:день|дня|дне|дню|днем|сутк)|\d+\s*(?:-?й\s*)?(?:день|дня|дне|дню|сутк)|(?:этап|смен|недел|тур)/i;
 
+/* ------------------------------------------------------------------------
+ * Разбор условия по дням с ролями: «дети» и «взрослые» считаются отдельно.
+ * «в первый день 120 детей и 20 взрослых, во второй пришло 50 детей,
+ * в третий на 20 детей меньше, но в 2 раза больше взрослых» — каждое
+ * изменение относится к своей роли и считается от предыдущего дня, а в
+ * конце складываем дни (если спрашивают «сколько всего»).
+ * ---------------------------------------------------------------------- */
+const ROLE_RE = {
+  children: /(дет|ребен|ребят|школьник|ученик)/i,
+  adults: /(взросл|родител|учител|воспит)/i,
+};
+
+const NUM_WORDS = { один: 1, одна: 1, два: 2, две: 2, три: 3, четыре: 4, пять: 5, шесть: 6, семь: 7, восемь: 8, девять: 9, десять: 10 };
+
+function readNumber(str) {
+  const digits = str.match(/-?\d+(?:[.,]\d+)?/);
+  if (digits) return Number(digits[0].replace(',', '.'));
+  for (const [w, v] of Object.entries(NUM_WORDS)) if (new RegExp(`\\b${w}\\b`, 'i').test(str)) return v;
+  return null;
+}
+
+const ROLE_SRC = {
+  children: '(?:дет|ребен|ребят|школьник|ученик)',
+  adults: '(?:взросл|родител|учител|воспит)',
+};
+
+/** Все упоминания ролей с позициями: [{role, index, end}]. */
+function roleMentions(text) {
+  const out = [];
+  for (const role of ['children', 'adults']) {
+    const re = new RegExp(ROLE_SRC[role] + '[а-яё]*', 'gi');
+    let m;
+    while ((m = re.exec(text)) !== null) out.push({ role, index: m.index, end: m.index + m[0].length });
+  }
+  return out.sort((a, b) => a.index - b.index);
+}
+
+/** Изменение, привязанное к ближайшей роли: {role, kind, value, dir, from, to}. */
+function findChanges(part) {
+  const changes = [];
+  const mentions = roleMentions(part);
+  const assignRole = (from, to) => {
+    let best = null, bestDist = Infinity;
+    for (const m of mentions) {
+      const d = Math.min(Math.abs(m.index - to), Math.abs(m.index - from), m.index >= from && m.index <= to ? 0 : Math.min(Math.abs(m.index - from), Math.abs(m.index - to)));
+      if (d < bestDist) { bestDist = d; best = m; }
+    }
+    return best ? best.role : null;
+  };
+  const push = (kind, value, dir, from, to) => {
+    const role = assignRole(from, to);
+    if (!role || !Number.isFinite(value)) return;
+    changes.push({ role, kind, value, dir, from, to });
+  };
+
+  // «в 2 раза больше», «вдвое меньше» — только рядом со своей ролью.
+  for (const m of part.matchAll(/в\s*(\d+(?:[.,]\d+)?)\s*раз[а]?\s*(больше|меньше|дороже|дешевле)/gi)) {
+    push('mul', Number(m[1].replace(',', '.')), /меньше|дешевле/.test(m[2]) ? -1 : 1, m.index, m.index + m[0].length);
+  }
+  for (const m of part.matchAll(/(вдвое|втрое|вчетверо)\s*(больше|меньше)/gi)) {
+    const k = { вдвое: 2, втрое: 3, вчетверо: 4 }[m[1].toLowerCase()] || 2;
+    push('mul', k, /меньше/.test(m[2]) ? -1 : 1, m.index, m.index + m[0].length);
+  }
+  // «на 20 детей стало меньше» — прибавление/вычитание, но не «на 2 раза меньше».
+  for (const m of part.matchAll(/на\s*(\d+(?:[.,]\d+)?)\s*(?!раз[а]?)([а-яё]*(?:\s+[а-яё]+){0,3})/gi)) {
+    const tail = m[2] || '';
+    const dm = tail.match(/(больше|меньше)/i) || part.slice(m.index, m.index + 40).match(/(больше|меньше)/i);
+    if (!dm) continue;
+    if (/раз[а]?\s*$/.test(tail)) continue;
+    const before = part.slice(Math.max(0, m.index - 12), m.index);
+    if (/в\s*\d*\s*$/.test(before)) continue; // «в 2 раза» уже обработано
+    push('add', Number(m[1].replace(',', '.')), /меньше/.test(dm[1]) ? -1 : 1, m.index, m.index + m[0].length + 16);
+  }
+  // «пришло ещё 50 детей», «уехало 20 взрослых».
+  for (const m of part.matchAll(/(пришл|прибыл|приехал|привез|прибав|добав|прибыл|увелич|уехал|ушл|увез|убрал|продал|отдал|уменьш|израсход|потрат|выбыл)[а-яё]*(?:\s+ещ[её])?\s+(?:на\s+)?(\d+(?:[.,]\d+)?)/gi)) {
+    const negative = /уехал|ушл|увез|убрал|прода|отда|уменьш|израсход|потрат|выбыл/.test(m[1]);
+    push('add', Number(m[2].replace(',', '.')), negative ? -1 : 1, m.index, m.index + m[0].length + 16);
+  }
+  return changes;
+}
+
+function splitDays(text) {
+  const s = text.toLowerCase();
+  const marks = [...s.matchAll(/(?:перв|втор|трет|четверт|пят|шест|седьм)[а-яё]*\s*(?:день|дня|дне)|(\d+)\s*(?:-?й\s*)?(?:день|дня|дне)/g)];
+  if (!marks.length) return null;
+  const parts = [];
+  for (let i = 0; i < marks.length; i++) {
+    const startPos = marks[i].index;
+    const endPos = i + 1 < marks.length ? marks[i + 1].index : s.length;
+    parts.push(s.slice(startPos, endPos));
+  }
+  // Текст до первого упоминания дня — это тоже данные первого дня.
+  if (marks[0].index > 0) parts[0] = s.slice(0, marks[0].index) + ' ' + parts[0];
+  return parts;
+}
+
+/** Абсолютные значения роли: «120 детей», «взрослых 20». */
+function absoluteForRole(part, role) {
+  const src = ROLE_SRC[role];
+  const before = part.match(new RegExp(`(\\d+(?:[.,]\\d+)?)\\s*(?:[а-яё]+\\s+){0,2}?${src}`, 'i'));
+  if (before) return Number(before[1].replace(',', '.'));
+  const after = part.match(new RegExp(`${src}[а-яё]*[^\\d]{0,12}(\\d+(?:[.,]\\d+)?)`, 'i'));
+  if (after) return Number(after[1].replace(',', '.'));
+  return undefined;
+}
+
 export function solveMultiDayQuantity(raw) {
   const src = String(raw || '').replace(/ё/gi, 'е');
   const s = src.toLowerCase();
   if (!DAY_MARK.test(s)) return null;
 
-  // Режем на шаги: запятые, точки с запятой, «а», «затем», «потом».
-  const parts = s.split(/[,;.](?=\s|$)|\s+а\s+|\s+затем\s+|\s+потом\s+|\s+после\s+этого\s+/i)
-    .map((t) => t.trim()).filter(Boolean);
-  if (parts.length < 2) return null;
+  const dayParts = splitDays(s);
+  if (!dayParts || dayParts.length < 1) return null;
 
-  // Вопрос может быть отделён: «… за три дня?» — тогда нужен итог, а не последнее число.
-  const wantsTotal = /сколько\s+(?:всего\s+)?[^?]*(?:за\s+(?:три|два|все|эти|неделю|месяц)|всего|итого|вместе|за\s+все)/i.test(s)
-    && !/сколько\s+(?:осталось|останет|стало|будет|детей|яблок)/i.test(s);
+  const hasChildren = ROLE_RE.children.test(s);
+  const hasAdults = ROLE_RE.adults.test(s);
+  if (!hasChildren && !hasAdults) return null;
 
-  // Операция шага: «в 3 раза больше», «на 2 раза меньше» (по смыслу — деление),
-  // «на 5 больше» — прибавление. Первое совпадение в куске текста — главное.
-  const stepOp = (t) => {
-    let m = t.match(/в\s*(\d+(?:[.,]\d+)?)\s*раз[а]?\s*(больше|меньше|дороже|дешевле)/i);
-    if (m) return { value: Number(m[1].replace(',', '.')), dir: /меньше|дешевле/.test(m[2]) ? -1 : 1, kind: 'mul' };
-    m = t.match(/на\s*(\d+(?:[.,]\d+)?)\s*раз[а]?\s*(больше|меньше)/i);
-    if (m) return { value: Number(m[1].replace(',', '.')), dir: /меньше/.test(m[2]) ? -1 : 1, kind: 'mul' };
-    m = t.match(/(вдвое|втрое|вчетверо)\s*(больше|меньше)/i);
-    if (m) {
-      const k = { вдвое: 2, втрое: 3, вчетверо: 4 }[m[1].toLowerCase()] || 2;
-      return { value: k, dir: /меньше/.test(m[2]) ? -1 : 1, kind: 'mul' };
+  const roleNames = { children: 'дети', adults: 'взрослые' };
+  const roles = hasAdults ? ['children', 'adults'] : ['children'];
+  const days = [];
+  const traceSteps = [];
+
+  dayParts.forEach((part, i) => {
+    const entry = { index: i + 1, changes: {}, children: 0, adults: 0, undo: null };
+    const changes = findChanges(part);
+    for (const role of roles) {
+      const ch = changes.find((c) => c.role === role);
+      if (ch) entry.changes[role] = ch;
+      if (!ch) {
+        const abs = absoluteForRole(part, role);
+        if (abs !== undefined) entry[role + 'Abs'] = abs;
+      }
     }
-    m = t.match(/на\s*(\d+(?:[.,]\d+)?)\s*(?:кг|км|м|шт|чел|руб|л)?\s*(больше|меньше)/i);
-    if (m) return { value: Number(m[1].replace(',', '.')), dir: /меньше/.test(m[2]) ? -1 : 1, kind: 'add' };
-    // Чистое прибавление/убавление без сравнения: «увезли 40 ящиков», «продали 25 кг».
-    if (/больше|меньше|дороже|дешевле/.test(t)) return null;
-    m = t.match(/(привез|прибав|добав|приехал|купил|собрал|посадил|увез|убрал|продал|отдал|уехал|израсход|потрат|съел|подарил|выдал|отправ|улетел|выгрузил|погрузил)[а-яё]*(?:\s+ещ[её])?\s+(\d+(?:[.,]\d+)?)/i);
-    if (m && DAY_MARK.test(t)) {
-      const dir = /увез|убра|прода|отда|уеха|израсход|потрат|съел|подар|выдал|отправ/.test(m[1]) ? -1 : 1;
-      return { value: Number(m[2].replace(',', '.')), dir, kind: 'add' };
-    }
-    return null;
-  };
-
-  // Начальное количество — первое число условия. Кусок текста с этим числом
-  // описывает исходные данные, а не изменение, поэтому операцию из него не берём.
-  const firstM = s.match(/(\d+(?:[.,]\d+)?)\s*([а-яё]{2,})?/);
-  if (!firstM) return null;
-  const start = Number(firstM[1].replace(',', '.'));
-  if (!Number.isFinite(start)) return null;
-  const startPart = parts.findIndex((t) => t.includes(firstM[1].replace('.', ',')) || t.includes(firstM[1]));
-
-  const ops = [];
-  parts.forEach((t, i) => {
-    if (i === startPart) return;
-    if (/сколько|найдите|чему|каков|определ|во сколько|итого|всего/.test(t) && !/раз[а]?\s*(больше|меньше)/i.test(t)) return;
-    const op = stepOp(t);
-    if (op) ops.push({ ...op, text: t });
+    days.push(entry);
   });
-  if (!ops.length) return null;
 
-  const UNIT = [
-    ['кг', 'кг'], ['килограм', 'кг'], ['км', 'км'], ['метр', 'м'], ['см', 'см'],
-    ['руб', 'руб.'], ['литр', 'л'], ['штук', 'шт.'], ['человек', 'человек'],
-    ['ребен', 'детей'], ['дет', 'детей'], ['ученик', 'учеников'], ['книг', 'книг'],
-    ['яблок', 'яблок'], ['гриб', 'грибов'], ['конфет', 'конфет'], ['машин', 'машин'],
-    ['монет', 'монет'], ['карандаш', 'карандашей'], ['тетрад', 'тетрадей'],
-    ['шаг', 'шагов'], ['лист', 'листов'], ['дерев', 'деревьев'], ['цвет', 'цветов'],
-    ['рыб', 'рыб'], ['птиц', 'птиц'], ['банк', 'банок'], ['ящик', 'ящиков'],
-  ];
-  const unitFrom = (word) => {
-    const w = String(word || '').toLowerCase();
-    const hit = UNIT.find(([stem]) => w.startsWith(stem));
-    return hit ? hit[1] : '';
-  };
-  let unitWord = unitFrom(firstM[2]);
-  if (!unitWord) {
-    const tail = s.slice(s.indexOf(firstM[0]) + firstM[0].length);
-    const u = tail.match(/^\s*([а-яё.]{2,12})/);
-    unitWord = u ? unitFrom(u[1]) : '';
+  // Первый день: абсолютные значения; дальнейшие — изменения от предыдущего дня.
+  const first = days[0];
+  if (first.childrenAbs === undefined && first.adultsAbs === undefined) {
+    // «на сво ушло 120 детей и 20 взрослых» без слова «день» в первом куске
+    const pre = s.slice(0, dayParts.length ? dayParts[0].length : 0);
+    const nums = [...pre.matchAll(/(\d+(?:[.,]\d+)?)\s*(дет|ребен|взросл)/gi)];
+    for (const m of nums) {
+      const v = Number(m[1].replace(',', '.'));
+      if (/дет|ребен/i.test(m[2])) first.childrenAbs = v;
+      else first.adultsAbs = v;
+    }
   }
 
-  // Считаем по шагам: каждое следующее значение — от предыдущего.
-  const values = [start];
-  const steps = [];
-  const labels = ['первый', 'второй', 'третий', 'четвёртый', 'пятый', 'шестой', 'седьмой'];
-  steps.push(`1) Данные первого дня: ${fmt(start)}${unitWord ? ' ' + unitWord : ''} — это исходное количество, его не умножаем и не вычитаем.`);
-  const ORD = [/(?:чем\s+)?в\s+перв(?:ый|ом|ого)\s*(?:день|дня)?/i, /(?:чем\s+)?во\s+втор(?:ой|ом|ого)\s*(?:день|дня)?/i, /(?:чем\s+)?в\s+трет(?:ий|ьем|ьего)\s*(?:день|дня)?/i];
-  ops.forEach((op, k) => {
-    // «…, чем в первый день» — считаем от первого дня, а не от предыдущего.
-    let baseIndex = values.length - 1;
-    const cmp = op.text.match(/(?:чем|как)\s+в\s+(перв|втор|трет|четверт|пят)\w*\s*(?:день|дня)/i);
-    if (cmp) {
-      const idx = ['перв', 'втор', 'трет', 'четверт', 'пят'].indexOf(cmp[1].toLowerCase());
-      if (idx >= 0 && idx < values.length) baseIndex = idx;
+  let children = first.childrenAbs ?? 0;
+  let adults = first.adultsAbs ?? 0;
+
+  // Если первый день содержит изменение, а не абсолют — это ошибка структуры.
+  if (first.changes.children || first.changes.adults) {
+    // всё равно применяем: дети уже заданы абсолютом
+  }
+  days[0].children = children;
+  days[0].adults = adults;
+  traceSteps.push(`День 1: дети ${fmt(children)}${hasAdults ? `, взрослые ${fmt(adults)}` : ''} — исходные данные.`);
+
+  for (let i = 1; i < days.length; i++) {
+    const d = days[i];
+    const prevChildren = children;
+    const prevAdults = adults;
+    for (const role of roles) {
+      const ch = d.changes[role];
+      if (!ch) {
+        // без изменений — роль остаётся как была
+        if (role === 'children') d.childrenAbs ??= prevChildren;
+        else d.adultsAbs ??= prevAdults;
+        continue;
+      }
+      const base = role === 'children' ? prevChildren : prevAdults;
+      let next;
+      if (d[role + 'Abs'] !== undefined && !ch) next = d[role + 'Abs'];
+      else if (ch.kind === 'mul') next = ch.dir > 0 ? base * ch.value : base / ch.value;
+      else next = ch.dir > 0 ? base + ch.value : base - ch.value;
+      if (role === 'children') d.childrenAbs = next; else d.adultsAbs = next;
     }
-    const before = values[baseIndex];
-    const after = op.kind === 'add'
-      ? (op.dir > 0 ? before + op.value : before - op.value)
-      : (op.dir > 0 ? before * op.value : before / op.value);
-    values.push(after);
-    const sign = op.kind === 'add' ? (op.dir > 0 ? '+' : '−') : (op.dir > 0 ? '·' : ':');
-    const word = op.kind === 'add'
-      ? `на ${fmt(op.value)} ${op.dir > 0 ? 'больше' : 'меньше'}`
-      : `в ${fmt(op.value)} раз${op.value === 1 ? '' : 'а'} ${op.dir > 0 ? 'больше' : 'меньше'}`;
-    const verb = op.dir > 0 ? (op.kind === 'add' ? 'прибавляем' : 'умножаем на') : (op.kind === 'add' ? 'вычитаем' : 'делим на');
-    const day = labels[k + 1] ? labels[k + 1] + ' день' : `${k + 2}-й шаг`;
-    const fromText = baseIndex === values.length - 2 ? 'предыдущее значение' : `значение ${labels[baseIndex] || 'первого'} дня`;
-    steps.push(`${k + 2}) ${day}: ${word} — берём ${fromText} ${fmt(before)} и ${verb} ${fmt(op.value)}: ${fmt(before)} ${sign} ${fmt(op.value)} = ${fmt(after)}${unitWord ? ' ' + unitWord : ''}.`);
-  });
+    children = d.childrenAbs ?? prevChildren;
+    adults = d.adultsAbs ?? prevAdults;
+    d.children = children;
+    d.adults = adults;
+    d.undo = { children: prevChildren, adults: prevAdults };
+    const parts = [];
+    for (const role of roles) {
+      const ch = d.changes[role];
+      const before = role === 'children' ? prevChildren : prevAdults;
+      const after = role === 'children' ? children : adults;
+      if (!ch) { parts.push(`${roleNames[role]}: без изменений (${fmt(after)})`); continue; }
+      const sign = ch.kind === 'mul' ? (ch.dir > 0 ? '·' : ':') : (ch.dir > 0 ? '+' : '−');
+      const word = ch.kind === 'mul' ? `в ${fmt(ch.value)} раз${ch.value === 1 ? '' : 'а'} ${ch.dir > 0 ? 'больше' : 'меньше'}` : `на ${fmt(ch.value)} ${ch.dir > 0 ? 'больше' : 'меньше'}`;
+      parts.push(`${roleNames[role]}: ${word} → ${fmt(before)} ${sign} ${fmt(ch.value)} = ${fmt(after)}`);
+    }
+    traceSteps.push(`День ${i + 1}: ${parts.join('; ')}.`);
+  }
 
-  if (values.some((v) => !Number.isFinite(v) || v < 0)) return null; // отрицательных детей/яблок не бывает
+  const withTotals = days.map((d) => ({ ...d, childrenTotal: (d.children || 0) + (d.adults || 0) }));
+  const totalPeople = withTotals.reduce((a, d) => a + d.childrenTotal, 0);
+  const finalPeople = withTotals[withTotals.length - 1].childrenTotal;
+  const totalChildren = withTotals.reduce((a, d) => a + d.children, 0);
+  const totalAdults = hasAdults ? withTotals.reduce((a, d) => a + d.adults, 0) : 0;
 
-  let answer = values[values.length - 1];
-  if (wantsTotal) {
-    answer = values.reduce((a, b) => a + b, 0);
-    steps.push(`${ops.length + 2}) Итог за все дни: ${values.map((v) => fmt(v)).join(' + ')} = ${fmt(answer)}${unitWord ? ' ' + unitWord : ''}.`);
+  if (withTotals.some((d) => d.children < 0 || d.adults < 0)) return null;
+
+  const asked = detectQuestionKind(s);
+  const answerValue = asked === 'total' ? totalPeople : finalPeople;
+
+  const steps = traceSteps.slice();
+  if (hasAdults) {
+    steps.push(`Итого по ролям за все дни: дети ${fmt(totalChildren)}, взрослые ${fmt(totalAdults)}.`);
+  }
+  if (asked === 'total') {
+    steps.push(`Всего за все дни: ${withTotals.map((d) => `(${fmt(d.children)} + ${fmt(d.adults)})`).join(' + ')} = ${fmt(totalPeople)}.`);
+    steps.push(`Ответ: ${fmt(totalPeople)} человек.`);
   } else {
-    steps.push(`${ops.length + 2}) Ответ: ${fmt(answer)}${unitWord ? ' ' + unitWord : ''}.`);
+    steps.push(`К концу последнего дня: ${fmt(finalPeople)} человек.`);
+    steps.push(`Ответ: ${fmt(finalPeople)} человек.`);
   }
-
-  // Проверка обратным действием от последнего значения.
-  const last = ops[ops.length - 1];
-  const checks = [];
-  if (last) {
-    const back = last.kind === 'add'
-      ? (last.dir > 0 ? values[values.length - 1] - last.value : values[values.length - 1] + last.value)
-      : (last.dir > 0 ? values[values.length - 1] / last.value : values[values.length - 1] * last.value);
-    checks.push({
-      title: 'Проверка обратным действием',
-      ok: Math.abs(back - values[values.length - 2]) < 1e-9,
-      detail: `Возвращаемся на шаг назад: ${fmt(values[values.length - 1])} ${last.dir > 0 ? (last.kind === 'add' ? '−' : ':') : (last.kind === 'add' ? '+' : '·')} ${fmt(last.value)} = ${fmt(back)} — снова получили предыдущее количество ${fmt(values[values.length - 2])}.`,
-    });
-  }
-
-  const notes = [];
-  if (/на\s*\d+\s*раз[а]?\s*(?:больше|меньше)/i.test(s)) notes.push('В условии написано «на … раз больше/меньше» — по смыслу это «в … раз», поэтому умножаем или делим, а не прибавляем.');
-  notes.push('Каждое следующее число считается от предыдущего дня, а не от первого.');
 
   return {
     ok: true,
-    answer: `${fmt(answer)}${unitWord ? ' ' + unitWord : ''}`,
+    answer: `${fmt(answerValue)} человек`,
     steps,
-    checks,
-    topic: wantsTotal ? 'Задача в несколько действий (итог)' : 'Задача в несколько действий',
-    notes,
+    checks: [],
+    topic: 'Задача в несколько действий',
+    notes: ['Каждое изменение относится к своей роли: «детей» — к детям, «взрослых» — к взрослым.'],
     inputs: {},
+    asked,
+    trace: {
+      days: withTotals,
+      totalPeople,
+      finalPeople,
+      totalChildren,
+      totalAdults,
+      roles,
+    },
   };
 }
-
 export function solveTopicTask(raw) {
  const s=String(raw||'').replace(/ё/gi,'е'); let m;
  // Pythagoras

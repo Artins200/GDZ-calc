@@ -495,6 +495,31 @@ function renderTask(sol) {
     <div class="answer-label">Ответ</div>
     <p class="answer-value">${esc(sol.answer)}</p>
   </div>`;
+  // Автоматическая проверяющая система: показывает, сколько проверок прошло.
+  if (sol.verification?.checks?.length) {
+    const v = sol.verification;
+    const passed = v.checks.filter((c) => c.ok).length;
+    const state = v.ok ? 'ok' : passed / v.checks.length > 0.7 ? 'warn' : 'bad';
+    html += `<div class="score-box ${state}">
+      <div class="score-head"><span class="score-dot"></span>Проверка решения: ${passed} из ${v.checks.length}${v.ok ? ' — сходится' : ' — есть замечания'}</div>
+      <div class="score-meter"><i style="width:${Math.round((passed / v.checks.length) * 100)}%"></i></div>
+      <details class="score-more"><summary>Все проверки</summary>
+        <ul class="score-list">${v.checks.map((c) => `<li><span class="tick${c.ok ? '' : ' bad'}">${c.ok ? '✓' : '!'}</span><span><b>${esc(c.title)}.</b> ${esc(c.detail)}</span></li>`).join('')}</ul>
+      </details>
+    </div>`;
+  }
+  if (sol.alternatives?.length) {
+    html += `<div class="alt-box"><b>Если вопрос понят иначе</b>${sol.alternatives.map((a) => `<span>${esc(a.label)}: <b>${esc(String(Math.round(a.value * 1e4) / 1e4).replace('.', ','))}</b></span>`).join('')}</div>`;
+  }
+  // Сверка с ответом, который ввёл пользователь.
+  const userAnswer = parseNum($('#task-user-answer')?.value);
+  if (Number.isFinite(userAnswer)) {
+    const own = Number(String(sol.answer).replace(/[^\d,.\-]/g, '').replace(',', '.'));
+    if (Number.isFinite(own)) {
+      const same = Math.abs(own - userAnswer) < 1e-6;
+      html += `<div class="user-check ${same ? 'ok' : 'bad'}">${same ? '✓ Ваш ответ совпал с решением.' : `Ваш ответ ${esc(String(userAnswer).replace('.', ','))} не совпал: в решении ${esc(sol.answer)}.`}</div>`;
+    }
+  }
   const verified = classifyTask(taskInput.value);
   if (verified.ok) html += `<details class="verify-box"><summary>Тип задачи проверен в 2 этапа · ${esc(verified.label)}</summary>
     <div><b>1. Распознавание:</b> ${esc(verified.stage1)}</div>
