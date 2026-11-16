@@ -1,0 +1,12 @@
+{
+  "name": "gdz-calc",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Калькулятор по всем формулам учебника «Алгебра 7» (Макарычев и др.) + парсер текстовых задач",
+  "scripts": {
+    "start": "node server.mjs",
+    "dev": "node server.mjs",
+    "test": "node tests/smoke.mjs"
+  }
+}
