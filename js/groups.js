@@ -29,7 +29,7 @@ const fmtN = (v) => {
   return String(r).replace('.', ',');
 };
 
-const DAY_RE = /(?:перв|втор|трет|четверт|пят|шест|седьм|восьм|девят|десят)[а-яё]*\s*(?:день|дня|дне|дню|днём)|(?:^|[^а-яё])(?:\d+)\s*(?:-?й\s*)?(?:день|дня|дне|дню)/gi;
+const DAY_RE = /(?:^|[^а-яё])(?:(?:перв|втор|трет|четверт|пят|шест|седьм|восьм|девят|десят)[а-яё]*\s*(?:день|дня|дне|дню|днём)|(?:\d+)\s*(?:-?й\s*)?(?:день|дня|дне|дню)|(?<!чем\s)(?:во|в)\s+(?:перв|втор|трет|четверт|пят)[а-яё]*\s*(?=[—–-]|\d))/gi;
 
 const PLUS_SRC = '(?:присоедин|пришл|зашл|прибыл|приехал|привез|прибав|добав|подключ|записал|поступ|взял|купил|собрал|посадил|увелич|выросл|подрос|набрал|привлеч|зарегистрир|привели|принесли|подарил)';
 const MINUS_SRC = '(?:вышл|вышел|ушл|уехал|увез|убрал|прода|отда|израсход|потрат|выбыл|отключ|покинул|потерял|сократ|снизил|уменьш|улетел|сбежал|испортил)';
@@ -50,9 +50,14 @@ export function splitByDays(text) {
   if (!marks.length) return null;
   const parts = [];
   for (let i = 0; i < marks.length; i++) {
-    const from = i === 0 ? 0 : marks[i].index;
+    // маркер «во второй день» указывает на СЛЕДУЮЩИЙ день, а не на текущий
+    const from = marks[i].index;
     const to = i + 1 < marks.length ? marks[i + 1].index : s.length;
-    parts.push({ index: i + 1, text: s.slice(from, to) });
+    if (i === 0) {
+      parts.push({ index: 1, text: s.slice(0, to) });
+    } else {
+      parts.push({ index: i + 1, text: s.slice(from, to) });
+    }
   }
   return parts.filter((p, i) => i === 0 || p.text.trim().length > 0);
 }
@@ -140,6 +145,11 @@ function unitFor(category, groupName, measure) {
   return '';
 }
 
+/** Единица ответа, склонённая под вопрос: «тракторов», «детей», «яблок». */
+function askUnit(tailGroups, fallback) {
+  return tailGroups || fallback;
+}
+
 /** Название группы с числом: «новичков 80». */
 function describeOne(name, value) {
   const noun = name.replace(/\s+\d+.*$/, '');
@@ -170,6 +180,9 @@ export function solveGroupedTask(raw) {
 
   const ensure = (name, category) => {
     if (!state.has(name)) {
+      // «тракторов» и «трактора» — одна и та же группа: склеиваем по корню.
+      const same = order.find((n) => state.get(n).category === category && sameStem(n, name));
+      if (same) return state.get(same);
       order.push(name);
       state.set(name, { value: 0, category, name });
     }
@@ -182,18 +195,18 @@ export function solveGroupedTask(raw) {
 
   // --- 1-й день: абсолютные значения («80 новичков и 15 опытных игроков»)
   const d1 = days[0].text;
-  const d1Groups = namedGroupsWithPositions(d1);
+  const d1Groups = namedGroupsWithPositions(d1).filter((g) => !isUnitWord(d1, g));
   const d1Nums = numbersWithPositions(d1).filter((n) => !isCoefficient(d1, n));
   const usedNums = new Set();
   for (const g of d1Groups) {
-    ensure(g.name, g.category);
     const pick = pickNumberForGroup(d1Groups, d1Nums, usedNums, g);
-    if (pick) {
-      // в первом дне действие может стоять ДО числа («зашли 80 новичков»),
-      // но также может быть «зашло 120, ушло 20» — оба числа попадут сюда по порядку
-      state.get(g.name).value = pick.value;
-      usedNums.add(pick.index);
-    }
+    // Группа без числа в первом дне («рабочие собрали 120 деталей») — это
+    // действующее лицо, а не измеряемая группа: не заводим её в расчёт.
+    if (!pick) continue;
+    ensure(g.name, g.category);
+    // в первом дне число может стоять и до группы («зашли 80 новичков»)
+    state.get(g.name).value = pick.value;
+    usedNums.add(pick.index);
   }
   // числа, к которым не нашлось группы, но группа в дне одна — отдаём ей
   if (order.length === 1) {
@@ -233,14 +246,30 @@ export function solveGroupedTask(raw) {
       if (!nums.length) continue;
 
       const phraseGroup = groups.length ? groups.at(-1) : null;
-      const targetName = phraseGroup ? phraseGroup.name : lastGroup;
+      let targetName = phraseGroup ? phraseGroup.name : lastGroup;
       if (!targetName) continue;
+      if (!state.has(targetName) && phraseGroup) {
+        // новая словоформа уже известной группы («трактора» → «тракторов»)
+        const same = order.find((n) => state.get(n).category === phraseGroup.category && sameStem(n, targetName));
+        if (same) targetName = same;
+      }
       const target = state.get(targetName);
       if (!target) continue;
+      if (lastGroup && !state.has(lastGroup)) lastGroup = targetName;
       // в первом дне уже посчитали — не дублируем
       if (i === 0) continue;
 
-      const changes = changesIn(phrase, nums, targetName, target, text, i);
+      let changes = changesIn(phrase, nums, targetName, target, text, i);
+      // «во второй день — 50» / «во второй день 50 штук» (без глагола): новое значение
+      if (!changes.length) {
+        const bare = phrase
+          .replace(/^\s*(?:а\s+)?(?:во?|на|в)?\s*(?:перв|втор|трет|четверт|пят)[а-яё]*\s*(?:день|дня|дне)?\s*/i, '')
+          .replace(/\s*(?:—|–|-|:)\s*/g, ' ')
+          .trim();
+        if (/^\d+(?:[.,]\d+)?(?:\s*[а-яё]+)?$/.test(bare)) {
+          changes = [{ kind: 'set', value: nums[0].value, at: nums[0].index }];
+        }
+      }
       for (const ch of changes) {
         const before = target.value;
         if (ch.kind === 'mul') target.value = ch.sign > 0 ? target.value * ch.value : target.value / ch.value;
@@ -265,6 +294,15 @@ export function solveGroupedTask(raw) {
   }
 
   for (const v of state.values()) if (v.value < 0 || !Number.isFinite(v.value)) return null;
+  // Дробное количество предметов — повод предупредить, а не молча округлять.
+  const fractional = [...state.entries()].filter(([, g]) => g.category !== 'people' && Math.abs(g.value - Math.round(g.value)) > 1e-9);
+  const notes = [
+    'Разбор по группам: каждое число отнесено к своей группе и своему дню.',
+    'Изменения («пришло», «ушло», «в 3 раза больше») применяются по порядку, как в условии.',
+  ];
+  if (fractional.length) {
+    notes.push(`Получилось нецелое количество (${fractional.map(([n, g]) => `${n} ${fmtN(g.value)}`).join(', ')}) — проверьте, не должно ли деление относиться к другому дню или группе.`);
+  }
 
   const total = order.reduce((a, n) => a + state.get(n).value, 0);
   const sumAll = trace.reduce((a, t) => a + order.reduce((b, n) => b + (t.snapshot[n] || 0), 0), 0);
@@ -272,7 +310,18 @@ export function solveGroupedTask(raw) {
   const measure = detectMeasure(src);
   const asksMeasure = isAskedMeasure(src, measure);
   const mainCat = state.get(order[0]).category;
-  const unit = answerUnit(mainCat, measure, asksMeasure);
+  let unit = answerUnit(mainCat, measure, asksMeasure);
+  // Если в вопросе названа та же группа («Сколько тракторов стало?»), отвечаем
+  // её словом из вопроса — так ответ читается естественно.
+  const tail = src.slice(-200);
+  const tailGroups = namedGroupsWithPositions(tail).filter((g) => !measure || g.category !== 'goods');
+  if (tailGroups.length && order.length === 1 && !asksMeasure && !measure) {
+    const qg = tailGroups.at(-1);
+    if (sameStem(qg.name, order[0]) || qg.category === mainCat) unit = askUnit(qg.name, unit);
+  }
+  // Для нескольких групп итоговая единица — «человек»/«животных»/«штук»,
+  // а не имя первой группы: «85 яблок» для яблок и груш звучит неверно.
+  if (!unit) unit = order.length > 1 ? 'штук' : state.get(order[0]).name;
 
   let answerValue = total;
   let answerLabel = 'всего';
@@ -303,10 +352,7 @@ export function solveGroupedTask(raw) {
     answer: `${fmtN(answerValue)}${unit ? ' ' + unit : ''}`,
     steps,
     topic: 'Задача в несколько действий',
-    notes: [
-      'Разбор по группам: каждое число отнесено к своей группе и своему дню.',
-      'Изменения («пришло», «ушло», «в 3 раза больше») применяются по порядку, как в условии.',
-    ],
+    notes,
     inputs: {},
     asked: question.kind,
     groups: order.map((name) => ({ ...state.get(name) })),
@@ -326,6 +372,27 @@ export function solveGroupedTask(raw) {
 }
 
 /* --------------------------------------------------------------- помощники */
+
+/** Общий корень слова: «тракторов» / «трактора» / «трактор» → «трактор». */
+function stemWord(w) {
+  const v = normWord(w).replace(/[^а-яё]/g, '');
+  if (!v) return '';
+  // отсекаем падежные окончания, пока слово длиннее 4 букв
+  const endings = ['ами', 'ями', 'ов', 'ев', 'ей', 'ах', 'ях', 'ом', 'ем', 'ой', 'ый', 'ий', 'ая', 'ие', 'ые', 'ую', 'юю', 'а', 'я', 'ы', 'и', 'е', 'у', 'ю', 'о', 'ь'];
+  for (const e of endings) {
+    if (v.length - e.length >= 4 && v.endsWith(e)) return v.slice(0, -e.length);
+  }
+  return v;
+}
+
+/** Один и тот же корень: «тракторов» / «трактора» / «трактор». */
+function sameStem(a, b) {
+  const key = (v) => normWord(v).split(/\s+/).map(stemWord).filter(Boolean).join(' ');
+  const ka = key(a);
+  const kb = key(b);
+  if (!ka || !kb) return false;
+  return ka === kb || ka.startsWith(kb) || kb.startsWith(ka);
+}
 
 function snapshot(state, order) {
   return Object.fromEntries(order.map((n) => [n, state.get(n)?.value ?? 0]));
@@ -384,6 +451,18 @@ function changesIn(phrase, nums, groupName, group, dayText, dayIndex) {
   const out = [];
   const used = new Set();
 
+  // «на 2 раза меньше» — в задачах это то же, что «в 2 раза меньше»
+  const onRaz = /(?:^|[^а-яё])на\s*\d+(?:[.,]\d+)?\s*раз[а]?\s*(?:больше|меньше)/i.exec(phrase);
+  if (onRaz && !/в\s*\d+(?:[.,]\d+)?\s*раз/i.test(phrase)) {
+    const value = Number(/(\d+(?:[.,]\d+)?)/.exec(onRaz[0])[1].replace(',', '.'));
+    const sign = /меньше/.test(onRaz[0]) ? -1 : 1;
+    out.push({ kind: 'mul', sign, value, at: onRaz.index });
+    for (const n of nums) {
+      if (n.index >= onRaz.index && n.end <= onRaz.index + onRaz[0].length) used.add(n.index);
+      if (n.index >= onRaz.index && n.index < onRaz.index + onRaz[0].length + 12) used.add(n.index);
+    }
+  }
+
   // «в 3 раза больше/меньше»
   const times = TIMES_RE.exec(phrase);
   if (times) {
@@ -396,9 +475,9 @@ function changesIn(phrase, nums, groupName, group, dayText, dayIndex) {
   if (/удвоил|вдвое\s+больше/.test(phrase)) out.push({ kind: 'mul', sign: 1, value: 2, at: phrase.indexOf('вдво') >= 0 ? phrase.indexOf('вдво') : phrase.indexOf('удво') });
   if (/вдвое\s+меньше|уменьшил[а-яё]*\s+вдвое/.test(phrase)) out.push({ kind: 'mul', sign: -1, value: 2, at: phrase.indexOf('вдво') });
 
-  // «на N больше/меньше» — относительное изменение
+  // «на N больше/меньше» — относительное изменение (но не «на N раз меньше»)
   const rel = ON_REL_RE.exec(phrase);
-  if (rel) {
+  if (rel && !/^\s*раз/i.test(phrase.slice(rel.index + rel[0].indexOf(rel[1]) + rel[1].length, rel.index + rel[0].length))) {
     const value = Number(rel[1].replace(',', '.'));
     const sign = /меньше/.test(rel[2]) ? -1 : 1;
     out.push({ kind: 'add', sign, value, at: rel.index });
@@ -411,6 +490,9 @@ function changesIn(phrase, nums, groupName, group, dayText, dayIndex) {
     if (isCoefficient(phrase, n)) continue;
     // «на 5 кг больше» уже посчитали
     if (rel && n.index >= rel.index && n.end <= rel.index + rel[0].length) continue;
+    // число из «в N раз» / «на N раз»
+    const tail = phrase.slice(n.end, n.end + 8);
+    if (/^\s*раз/.test(tail)) continue;
     const around = phrase.slice(Math.max(0, n.index - 30), Math.min(phrase.length, n.end + 30));
     const plus = new RegExp(PLUS_SRC, 'i').test(around);
     const minus = new RegExp(MINUS_SRC, 'i').test(around);

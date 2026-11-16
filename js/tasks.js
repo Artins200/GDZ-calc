@@ -61,46 +61,49 @@ function normalizeText(raw) {
 }
 
 function classifyUnit(word) {
-  const w = (word || '').replace(/[.,;:!?)\]}]+$/g, '').trim().toLowerCase();
+  const w = (word || '').trim().toLowerCase();
   if (!w) return '';
-  if (/^(км\/ч|км\\ч|км\/час|кмвчас|километр.*час)/.test(w)) return 'kmh';
+  // Знак процента распознаём ДО обрезки знаков: «10%» и «10%.» — это проценты.
+  if (/^[.,;:!?)\]}]*%/.test(w)) return 'pct';
+  const w2 = w.replace(/[.,;:!?)\]}]+$/g, '').trim();
+  if (/^(км\/ч|км\\ч|км\/час|кмвчас|километр.*час)/.test(w2)) return 'kmh';
   // «40/км в час», «40 км/час», «40 км в час» — та же скорость
-  if (/^\/?км\s*в\s*час/.test(w) || /^\/км/.test(w)) return 'kmh';
-  if (/^(м\/с|м\\с|м\/сек)/.test(w)) return 'ms';
-  if (/^(м\/мин|м\\мин)/.test(w)) return 'mmin';
-  if (/^(м\/ч|м\\ч)/.test(w)) return 'mh';
-  if (/^%/.test(w)) return 'pct';
-  if (/^(процент|проц\.|проц)/.test(w)) return 'pct';
-  if (/^(м2|м²|м\^2|кв\.?м|квадратн)/.test(w)) return 'm2';
-  if (/^(см2|см²|см\^2)/.test(w)) return 'cm2';
-  if (/^(м3|м³|м\^3|куб\.?м|кубическ)/.test(w)) return 'm3';
-  if (/^(см3|см³|см\^3)/.test(w)) return 'cm3';
-  if (/^(км|километр)/.test(w)) return 'km';
-  if (/^(мм|миллиметр)/.test(w)) return 'mm';
-  if (/^(см|сантиметр)/.test(w)) return 'cm';
-  if (/^мин/.test(w)) return 'min';           // до «м»: «минут» начинается с «м»
-  if (/^(м|метр)/.test(w)) return 'm';
-  if (/^(кг|килограмм)/.test(w)) return 'kg';
-  if (/^(г|грамм)/.test(w)) return 'g';
-  if (/^(т|тонн)/.test(w)) return 't';
-  if (/^(год|лет)/.test(w)) return 'year';
-  if (/^(ч|час)/.test(w)) return 'h';
-  if (/^страниц/.test(w)) return 'items';         // до «с»: «страниц» начинается с «с»
-  if (/^(с|сек)/.test(w)) return 'sec';
-  if (/^(р|руб)/.test(w)) return 'rub';
-  if (/^га\b/.test(w)) return 'ha';
-  if (/^(шт|деталь|детал|издели|станок|компьютер|монет|марк|куст|книг|ящик|банк|шаг|гвозд)/.test(w)) return 'items';
-  if (/^(верст|вёрст)/.test(w)) return 'verst';
-  if (/^пуд/.test(w)) return 'pood';
-  if (/^фунт/.test(w)) return 'pound';
-  if (/^дюйм/.test(w)) return 'inch';
-  if (/^фут/.test(w)) return 'foot';
-  if (/^мил/.test(w)) return 'mile';
-  if (/^(°c|градус.*цельс)/.test(w)) return 'celsius';
-  if (/^(°f|градус.*фаренг)/.test(w)) return 'fahrenheit';
-  if (/^°|^градус/.test(w)) return 'deg';
-  if (/^(г\/см3|г\/см³|г\/см\^3)/.test(w)) return 'density';
-  if (/^(ч|час)/.test(w)) return 'h';
+  if (/^\/?км\s*в\s*час/.test(w2) || /^\/км/.test(w2)) return 'kmh';
+  if (/^(м\/с|м\\с|м\/сек)/.test(w2)) return 'ms';
+  if (/^(м\/мин|м\\мин)/.test(w2)) return 'mmin';
+  if (/^(м\/ч|м\\ч)/.test(w2)) return 'mh';
+  if (/^%/.test(w2)) return 'pct';
+  if (/^(процент|проц\.|проц)/.test(w2)) return 'pct';
+  if (/^(м2|м²|м\^2|кв\.?м|квадратн)/.test(w2)) return 'm2';
+  if (/^(см2|см²|см\^2)/.test(w2)) return 'cm2';
+  if (/^(м3|м³|м\^3|куб\.?м|кубическ)/.test(w2)) return 'm3';
+  if (/^(см3|см³|см\^3)/.test(w2)) return 'cm3';
+  if (/^(км|километр)/.test(w2)) return 'km';
+  if (/^(мм|миллиметр)/.test(w2)) return 'mm';
+  if (/^(см|сантиметр)/.test(w2)) return 'cm';
+  if (/^мин/.test(w2)) return 'min';           // до «м»: «минут» начинается с «м»
+  if (/^(м|метр)/.test(w2)) return 'm';
+  if (/^(кг|килограмм)/.test(w2)) return 'kg';
+  if (/^(г|грамм)/.test(w2)) return 'g';
+  if (/^(т|тонн)/.test(w2)) return 't';
+  if (/^(год|лет)/.test(w2)) return 'year';
+  if (/^(ч|час)/.test(w2)) return 'h';
+  if (/^страниц/.test(w2)) return 'items';         // до «с»: «страниц» начинается с «с»
+  if (/^(с|сек)/.test(w2)) return 'sec';
+  if (/^(р|руб)/.test(w2)) return 'rub';
+  if (/^га\b/.test(w2)) return 'ha';
+  if (/^(шт|деталь|детал|издели|станок|компьютер|монет|марк|куст|книг|ящик|банк|шаг|гвозд)/.test(w2)) return 'items';
+  if (/^(верст|вёрст)/.test(w2)) return 'verst';
+  if (/^пуд/.test(w2)) return 'pood';
+  if (/^фунт/.test(w2)) return 'pound';
+  if (/^дюйм/.test(w2)) return 'inch';
+  if (/^фут/.test(w2)) return 'foot';
+  if (/^мил/.test(w2)) return 'mile';
+  if (/^(°c|градус.*цельс)/.test(w2)) return 'celsius';
+  if (/^(°f|градус.*фаренг)/.test(w2)) return 'fahrenheit';
+  if (/^°|^градус/.test(w2)) return 'deg';
+  if (/^(г\/см3|г\/см³|г\/см\^3)/.test(w2)) return 'density';
+  if (/^(ч|час)/.test(w2)) return 'h';
   return '';
 }
 
@@ -121,7 +124,10 @@ function extractNumbers(raw) {
     if (!Number.isFinite(v)) continue;
     let word = m[2] || '';
     if (/^\d/.test(word)) word = '';            // «5 6» — это не единица измерения
+    // «10%.» — точка/запятая в конце слова не должны мешать знаку процента
+    if (/^[.,;:!?)\]}]*%/.test(word)) word = '%';
     let unit = classifyUnit(word);
+    if (unit === 'rub' && /%/.test(norm.slice(start + m[0].length, start + m[0].length + 2))) unit = 'pct';
     // «2 года», «3 года» — это срок, а не граммы
     if (/^год/.test(word.toLowerCase()) && unit === 'g') unit = 'year';
     if (/^лет/.test(word.toLowerCase()) && !unit) unit = 'year';
@@ -146,6 +152,8 @@ function extractNumbers(raw) {
         if (u) unit = u;
       }
     }
+    // «скидка 10%» — знак % сразу после числа, без слова
+    if (!unit && /^\s*%/.test(norm.slice(start + m[0].length))) unit = 'pct';
     out.push({
       v, unit, raw: m[0],
       index: start,
@@ -1398,6 +1406,8 @@ addRule({
   id: 'price', name: 'Стоимость = цена · количество',
   run(ctx) {
     if (!ctx.has(/(цена|стоимость|стоит|руб|р\.|за килограмм|за штуку)/)) return null;
+    // Скидка/проценты — не «цена × количество»: 2000 · 10 тут бессмысленно.
+    if (ctx.byUnit('pct').length || ctx.has(/(скидк|процент|снизил|повысил|подешев|подорож)/)) return null;
     const rub = ctx.byUnit('rub');
     const qty = ctx.byUnit('kg').concat(ctx.byUnit('items')).concat(ctx.values(''));
     const c = ctx.numNear(['цена', 'по', 'за'], ['rub']) ?? rub[0];
@@ -2744,6 +2754,61 @@ function noReliableAnswer(raw) {
   };
 }
 
+
+
+
+/** Есть ли оборот «на N раз меньше/больше» (спорная запись вместо «в N раз»). */
+function hasTimesOnRaz(raw) {
+  return /(?:^|[^а-я])на\s*\d+(?:[.,]\d+)?\s*раз[а]?\s*(?:больше|меньше)/i.test(String(raw || '').replace(/ё/g, 'е'));
+}
+
+/** Есть ли в условии «живые» роли, которые понимает solveMultiDay. */
+function hasPeopleRoles(raw) {
+  const s = String(raw || '').toLowerCase().replace(/ё/g, 'е');
+  return /(?:^|[^а-я])(?:дет(?:и|ей|ям|ьми|ях|ск)|ребен|ребят|школьник|ученик|дошкольник|взросл|родител)/.test(s);
+}
+
+/** Насколько полно решение использует условие: все ли числа и все ли группы
+ * из текста в нём учтены. Проверяющая система одинаково одобряет и верное,
+ * и «почти верное» решение, поэтому при выборе между решателями сравниваем
+ * ещё и покрытие условия.
+ */
+function coverageBonus(sol, raw) {
+  const text = String(raw || '').toLowerCase().replace(/ё/g, 'е');
+  const nums = [...text.matchAll(/\d+(?:[.,]\d+)?/g)]
+    .map((m) => Number(m[0].replace(',', '.')))
+    .filter((n) => n > 0);
+  const stepsText = (sol.steps || sol.rawSteps || []).join(' ');
+  const used = new Set([...stepsText.matchAll(/\d+(?:[.,]\d+)?/g)].map((m) => Number(m[0].replace(',', '.'))));
+  let bonus = 0;
+  if (nums.length) {
+    const covered = nums.filter((n) => used.has(n)).length / nums.length;
+    bonus += covered * 0.2;
+  }
+  // Единица ответа должна встречаться в условии: «240 человек» для деталей — мимо.
+  const unit = String(sol.answer || '').replace(/^[\d\s.,]+/, '').trim().toLowerCase();
+  if (unit && text.includes(unit.slice(0, 4))) bonus += 0.25;
+  const groups = sol.groups || [];
+  // у каждой группы должно быть своё имя в шагах, а не общее «дети»
+  if (groups.length > 1) bonus += 0.1;
+  if (sol.trace?.days?.length >= 3) bonus += 0.05;
+  return bonus;
+}
+
+/** Обёртка решения «по группам» в общий формат ответа. */
+function wrapGrouped(grouped, raw) {
+  const sol = { ...grouped, rawSteps: grouped.steps, steps: toActions(grouped.steps), checks: [], variants: [], inputs: {}, related: [], formulaIds: [] };
+  sol.verification = verifySolution(sol, raw);
+  return sol;
+}
+
+/** Обёртка решения «дети/взрослые» в общий формат ответа. */
+function wrapMultiDay(multiDay, raw) {
+  const sol = { ...multiDay, confidence: 99, rawSteps: multiDay.steps, steps: toActions(multiDay.steps), checks: multiDay.checks || [], variants: [], notes: multiDay.notes || [], inputs: {}, related: [], formulaIds: [] };
+  sol.verification = verifySolution(sol, raw);
+  return sol;
+}
+
 export function solveTask(raw, options = {}) {
   // Режим приложения: «informatics» / «geometry» — сначала профильный решатель.
   if (options.mode === 'informatics') {
@@ -2760,18 +2825,26 @@ export function solveTask(raw, options = {}) {
   // 1) Специализированный разбор «дети/взрослые/предметы» — там есть точные
   //    правила для «на N раз меньше» и вопросов по ролям.
   const multiDay = solveMultiDay(raw);
-  if (multiDay) {
-    const sol = { ...multiDay, confidence: 99, rawSteps: multiDay.steps, steps: toActions(multiDay.steps), checks: multiDay.checks || [], variants: [], notes: multiDay.notes || [], inputs: {}, related: [], formulaIds: [] };
-    sol.verification = verifySolution(sol, raw);
-    return sol;
-  }
-  // 2) Универсальный разбор по группам: новички/игроки, мальчики/девочки и т. п.
+  // 2) Универсальный разбор по группам: новички/игроки, мальчики/девочки, тракторы, кг…
   const grouped = solveGroupedTask(raw);
-  if (grouped) {
-    const sol = { ...grouped, rawSteps: grouped.steps, steps: toActions(grouped.steps), checks: [], variants: [], inputs: {}, related: [], formulaIds: [] };
-    sol.verification = verifySolution(sol, raw);
-    return sol;
+  // Если оба решателя что-то предложили — берём тот, чьё решение лучше проходит
+  // независимую проверку (при равенстве — привычный «дети/взрослые»).
+  if (grouped && multiDay) {
+    const gSol = wrapGrouped(grouped, raw);
+    const mSol = wrapMultiDay(multiDay, raw);
+    // Старый решатель знает только «дети/взрослые». Если в условии таких слов
+    // нет (тракторы, детали, газеты…), его разбор ролей — догадка: берём
+    // универсальный, если тот тоже прошёл проверку.
+    if (!hasPeopleRoles(raw) && gSol.verification.score >= mSol.verification.score - 0.15) return gSol;
+    // «на N раз меньше/больше» — старый решатель трактует как деление/умножение,
+    // универсальный честно предупредит, поэтому при таком обороте он точнее.
+    if (hasTimesOnRaz(raw) && gSol.verification.score >= mSol.verification.score - 0.05) return gSol;
+    const gScore = gSol.verification.score + coverageBonus(grouped, raw);
+    const mScore = mSol.verification.score + coverageBonus(multiDay, raw);
+    return gScore > mScore ? gSol : mSol;
   }
+  if (grouped) return wrapGrouped(grouped, raw);
+  if (multiDay) return wrapMultiDay(multiDay, raw);
   const topic = solveTopicTask(raw);
   if (topic) return { ...topic, confidence: 95, steps: toActions(topic.steps), rawSteps: topic.steps, checks: topic.checks || [], variants: [], notes: topic.notes || [], inputs: topic.inputs || {}, related: [], formulaIds: [] };
   const ctx = makeContext(raw);
