@@ -5,7 +5,7 @@
  * другое число», ранжирование похожих шаблонов, запасной разбор.
  * ========================================================================= */
 import {
-  fmt, fmtSmart, evaluate, solveEquation, solveSystem, affineCoefficients,
+  fmt, fmtSmart, evaluate, solveEquation, solveSystem, solveSystemByMethod, affineCoefficients,
   expandExpression, factorExpression, checkIdentity, gcd, lcm, primeFactors,
   factorizationString, preprocess,
 } from './mathcore.js';
@@ -13,6 +13,7 @@ import { FORMULAS, FORMULA_BY_ID, formulaSearch } from './formulas.js';
 import { predictFamily } from './dispatcher.js';
 import { FAMILY_BY_RULE } from './families.js';
 import { parseInterval, describeInterval, numberLineSVG, intersect, union } from './intervals.js';
+import { solveTopicTask } from './topic-solvers.js';
 
 /* ------------------------------------------------------------------ примеры */
 export const TASK_EXAMPLES = [
@@ -455,6 +456,10 @@ addRule({
         answer: sol.type === 'one' ? `(${fmt(sol.values.x)}; ${fmt(sol.values.y)})`
           : sol.type === 'many' ? 'бесконечно много решений' : 'решений нет',
         unit: '', steps: [`Система: { ${pair[0]}; ${pair[1]} }`, ...sol.steps],
+        variants: ['substitution', 'elimination', 'graphical'].map((method, i) => {
+          const r = solveSystemByMethod(pair, method);
+          return { title: `Способ ${i + 1}. ${method === 'substitution' ? 'Подстановка' : method === 'elimination' ? 'Сложение' : 'Графический'}`, steps: r.steps };
+        }),
         notes: sol.note ? [sol.note] : [],
       }),
     });
@@ -2674,6 +2679,8 @@ function verifyByFormula(formulaIds, inputs, answer) {
 }
 
 export function solveTask(raw, options = {}) {
+  const topic = solveTopicTask(raw);
+  if (topic) return { ...topic, confidence: 95, steps: toActions(topic.steps), rawSteps: topic.steps, checks: topic.checks || [], variants: [], notes: topic.notes || [], inputs: topic.inputs || {}, related: [], formulaIds: [] };
   const ctx = makeContext(raw);
   const attempts = [];
   for (const rule of RULES) {

@@ -41,6 +41,7 @@ export function normalizeIneq(raw) {
   let s = String(raw ?? '')
     .replace(/\u00a0/g, ' ')
     .replace(/[−–—]/g, '-')
+    .replace(/[⁰¹²³⁴⁵⁶⁷⁸⁹]/g, ch => `^${'⁰¹²³⁴⁵⁶⁷⁸⁹'.indexOf(ch)}`)
     .replace(/[∣❘｜]/g, '|')
     .replace(/[≤⩽]/g, '<=')
     .replace(/[≥⩾]/g, '>=')
@@ -644,8 +645,62 @@ export function solveInequality(raw) {
     return finalize(r, original);
   }
 
-  // 3) Обычная запись
+  // 3) Логарифмическое неравенство log_a(x) op c с областью x > 0.
+  const logMatch = norm.match(/log_([+-]?(?:\d+(?:\.\d*)?|\.\d+))\s*\(\s*([a-z])\s*\)\s*(<=|>=|<|>)\s*([-+]?\d+(?:\.\d+)?)/i)
+    || norm.match(/log_([+-]?(?:\d+(?:\.\d*)?|\.\d+))\s*([a-z])\s*(<=|>=|<|>)\s*([-+]?\d+(?:\.\d+)?)/i);
+  if (logMatch) {
+    const base = Number(logMatch[1]), v = logMatch[2].toLowerCase(), op = logMatch[3], c = Number(logMatch[4]);
+    if (!(base > 0) || Math.abs(base - 1) < EPS) return { error: 'Основание логарифма должно быть положительным и не равно 1.' };
+    const bound = base ** c, increasing = base > 1;
+    const less = op === '<' || op === '<=';
+    const left = less === increasing;
+    const strict = op === '<' || op === '>';
+    const upper = left ? bound : null, lower = left ? 0 : bound;
+    const notation = upper !== null ? `(0; ${fmt(upper)}${strict ? ')' : ']'}` : `${strict ? '(' : '['}${fmt(lower)}; +inf)`;
+    const iv = parseInterval(notation);
+    const relation = (increasing ? '' : ' (основание меньше 1 — знак меняется)');
+    return finalize({ type: 'set', variable: v, intervals: [iv], steps: [
+      `ОДЗ: ${v} > 0.`,
+      `Переходим к показательной форме: ${v} ${op} ${fmt(base)}^(${fmt(c)})${relation}.`,
+      `${fmt(base)}^(${fmt(c)}) = ${fmt(bound)}; пересекаем результат с ОДЗ ${v} > 0.`,
+    ] }, original);
+  }
+
+  // 4) Квадратичное неравенство ax²+bx+c op 0 (метод интервалов).
   const parsed = parseInequalityInput(original);
+  if (parsed.kind === 'single' && parsed.ops.length === 1) {
+    const [left, right] = parsed.sides, qop = parsed.ops[0], variableName = parsed.variable;
+    if (looksLikeMath(left) && looksLikeMath(right)) {
+      try {
+        const f = x => evaluate(`(${left})-(${right})`, { [variableName]: x });
+        const c0 = f(0), p = f(1), m = f(-1), a = (p + m - 2*c0)/2, b = (p-m)/2, c = c0;
+        const quadratic = Math.abs(a) > EPS && Math.abs(f(2) - (4*a + 2*b + c)) < 1e-6 && Math.abs(f(-2) - (4*a - 2*b + c)) < 1e-6;
+        if (quadratic) {
+          const D=b*b-4*a*c, roots=D < -EPS ? [] : Math.abs(D)<EPS ? [-b/(2*a)] : [(-b-Math.sqrt(D))/(2*a),(-b+Math.sqrt(D))/(2*a)].sort((x,y)=>x-y);
+          const strict = qop === '<' || qop === '>', wantPositive = qop === '>' || qop === '>=';
+          let intervals=[];
+          const test=x=>{const y=a*x*x+b*x+c;return wantPositive?y>EPS:y<-EPS;};
+          if (!roots.length) { if (test(0)) intervals=[parseInterval('(-inf; +inf)')]; }
+          else if (roots.length===1) { if ((a>0)===wantPositive) intervals=[parseInterval('(-inf; +inf)')]; else if(!strict) intervals=[parseInterval(`[${fmt(roots[0])}; ${fmt(roots[0])}]`)]; }
+          else {
+            const [r1,r2]=roots;
+            if(test(r1-1)) intervals.push(parseInterval(`(-inf; ${fmt(r1)}${!strict&&Math.abs(a)>0&&test(r1-1)?']':')'}`));
+            if(!test(r1-1)&&!test(r2+1)) intervals.push(parseInterval(`${strict?'(':'['}${fmt(r1)}; ${fmt(r2)}${strict?')':']'}`));
+            if(test(r2+1)) intervals.push(parseInterval(`${strict?'(':'['}${fmt(r2)}; +inf)`));
+          }
+          const cleaned=intervals.filter(Boolean);
+          return finalize({type:cleaned.length?'set':'none',variable:variableName,intervals:cleaned,steps:[
+            `Перенесём всё влево: ${fmt(a)}${variableName}² + (${fmt(b)})${variableName} + (${fmt(c)}) ${qop} 0.`,
+            `D = b² − 4ac = ${fmt(D)}${roots.length?`; нули: ${roots.map(fmt).join(' и ')}.`: '; нулей нет.'}`,
+            'Отметим нули на числовой прямой и определим знаки на промежутках методом интервалов.',
+          ]}, original);
+        }
+      } catch {}
+    }
+  }
+
+  // 5) Обычная запись
+
   if (parsed.kind === 'error') return { error: parsed.error };
   const sides = parsed.kind === 'system' ? parsed.parts.flatMap((p) => p.sides) : parsed.sides;
   if (!sides.every(looksLikeMath)) {

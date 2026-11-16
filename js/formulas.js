@@ -30,6 +30,10 @@ export const CHAPTERS = [
   { id: 'ch4', title: 'Глава IV. Многочлены', sub: '§ 8—10, с. 129—164', color: '#7b61b8' },
   { id: 'ch5', title: 'Глава V. Формулы сокращённого умножения', sub: '§ 11—13, с. 165—200', color: '#c8455f' },
   { id: 'ch6', title: 'Глава VI. Системы линейных уравнений', sub: '§ 14—15, с. 201—234', color: '#3a6ea5' },
+  { id: 'ch7', title: 'Алгебра 8 класса', sub: 'квадратные уравнения, Пифагор', color: '#8a6fc1' },
+  { id: 'ch8', title: 'Алгебра 9 класса', sub: 'прогрессии и тригонометрия', color: '#2b9a88' },
+  { id: 'ch9', title: 'Алгебра 10 класса', sub: 'степени, логарифмы, производные', color: '#cf7850' },
+  { id: 'ch10', title: 'Алгебра 11 класса', sub: 'интегралы и стереометрия', color: '#bd5f7e' },
 ];
 
 const RAW = [
@@ -1635,7 +1639,25 @@ function normalize(o) {
   };
 }
 
-export const FORMULAS = RAW.map(normalize);
+const ADVANCED_RAW = [
+ {id:'quadratic_formula',ch:'ch7',sec:'8 класс',kind:'formula',title:'Корни квадратного уравнения',display:'D=b²−4ac; x₁,₂=(−b±√D)/(2a)',eq:'x=(-b+sqrt(b^2-4*a*c))/(2*a)',find:'x',vars:[['a','коэффициент a','',1],['b','коэффициент b','',-5],['c','коэффициент c','',6],['x','корень','',null]],keywords:['дискриминант','квадратное уравнение','корни','виета']},
+ {id:'vieta_sum',ch:'ch7',sec:'8 класс',kind:'formula',title:'Теорема Виета: сумма корней',display:'x₁+x₂=−b/a',eq:'S=-b/a',find:'S',vars:[['a','коэффициент a','',1],['b','коэффициент b','',-5],['S','сумма корней','',null]],keywords:['виета','сумма корней','квадратное уравнение']},
+ {id:'vieta_product',ch:'ch7',sec:'8 класс',kind:'formula',title:'Теорема Виета: произведение корней',display:'x₁·x₂=c/a',eq:'P=c/a',find:'P',vars:[['a','коэффициент a','',1],['c','коэффициент c','',6],['P','произведение корней','',null]],keywords:['виета','произведение корней']},
+ {id:'pythagoras',ch:'ch7',sec:'8 класс',kind:'formula',title:'Теорема Пифагора',display:'c²=a²+b²',eq:'c^2=a^2+b^2',find:'c',vars:[['a','первый катет','',3],['b','второй катет','',4],['c','гипотенуза','',null]],keywords:['пифагора','пифагор','катет','гипотенуза']},
+ {id:'arith_nth',ch:'ch8',sec:'9 класс',kind:'formula',title:'n-й член арифметической прогрессии',display:'aₙ=a₁+(n−1)d',eq:'an=a1+(n-1)*d',find:'an',vars:[['a1','первый член','',3],['n','номер','',10],['d','разность','',2],['an','n-й член','',null]],keywords:['прогрессия','арифметическая','n-й член']},
+ {id:'arith_sum',ch:'ch8',sec:'9 класс',kind:'formula',title:'Сумма арифметической прогрессии',display:'Sₙ=n(2a₁+(n−1)d)/2',eq:'Sn=n*(2*a1+(n-1)*d)/2',find:'Sn',vars:[['a1','первый член','',3],['n','число членов','',10],['d','разность','',2],['Sn','сумма','',null]],keywords:['прогрессия','сумма арифметической']},
+ {id:'geom_nth',ch:'ch8',sec:'9 класс',kind:'formula',title:'n-й член геометрической прогрессии',display:'bₙ=b₁qⁿ⁻¹',eq:'bn=b1*q^(n-1)',find:'bn',vars:[['b1','первый член','',2],['q','знаменатель','',3],['n','номер','',5],['bn','n-й член','',null]],keywords:['геометрическая прогрессия','знаменатель']},
+ {id:'sine_theorem',ch:'ch8',sec:'9 класс',kind:'formula',title:'Теорема синусов',display:'a=2R·sin A',eq:'a=2*R*sin(A*PI/180)',find:'a',vars:[['R','радиус описанной окружности','',5],['A','угол (градусы)','',30],['a','сторона','',null]],keywords:['синус','теорема синусов','треугольник']},
+ {id:'cosine_theorem',ch:'ch8',sec:'9 класс',kind:'formula',title:'Теорема косинусов',display:'a²=b²+c²−2bc cos A',eq:'a=sqrt(b^2+c^2-2*b*c*cos(A*PI/180))',find:'a',vars:[['b','сторона b','',5],['c','сторона c','',7],['A','угол (градусы)','',60],['a','сторона','',null]],keywords:['косинус','теорема косинусов','треугольник']},
+ {id:'log_definition',ch:'ch9',sec:'10 класс',kind:'formula',title:'Определение логарифма',display:'logₐ x=b ⇔ x=aᵇ',eq:'x=a^b',find:'x',vars:[['a','основание','',2],['b','логарифм','',5],['x','аргумент','',null]],keywords:['логарифм','степень','основание']},
+ {id:'derivative_power',ch:'ch9',sec:'10 класс',kind:'formula',title:'Производная степенной функции',display:'(axⁿ)′=anxⁿ⁻¹',eq:'d=a*n*x^(n-1)',find:'d',vars:[['a','коэффициент','',3],['n','степень','',4],['x','аргумент','',2],['d','производная','',null]],keywords:['производная','степенная функция']},
+ {id:'product_rule',ch:'ch9',sec:'10 класс',kind:'rule',title:'Производная произведения',display:'(uv)′=u′v+uv′',desc:'Производная первого множителя на второй плюс первый множитель на производную второго.',keywords:['производная','произведение','правило']},
+ {id:'integral_power',ch:'ch10',sec:'11 класс',kind:'formula',title:'Первообразная степенной функции',display:'∫axⁿdx=axⁿ⁺¹/(n+1)+C',eq:'F=a*x^(n+1)/(n+1)+C',find:'F',vars:[['a','коэффициент','',3],['x','аргумент','',2],['n','степень','',2],['C','константа','',0],['F','первообразная','',null]],keywords:['интеграл','первообразная','степенная функция']},
+ {id:'cylinder_volume',ch:'ch10',sec:'11 класс',kind:'formula',title:'Объём цилиндра',display:'V=πr²h',eq:'V=PI*r^2*h',find:'V',vars:[['r','радиус','',3],['h','высота','',5],['V','объём','',null]],keywords:['стереометрия','цилиндр','объём']},
+ {id:'cone_volume',ch:'ch10',sec:'11 класс',kind:'formula',title:'Объём конуса',display:'V=πr²h/3',eq:'V=PI*r^2*h/3',find:'V',vars:[['r','радиус','',3],['h','высота','',5],['V','объём','',null]],keywords:['стереометрия','конус','объём']},
+];
+
+export const FORMULAS = [...RAW, ...ADVANCED_RAW].map(normalize);
 export const FORMULA_BY_ID = new Map(FORMULAS.map((f) => [f.id, f]));
 
 // Сообщаем вычислителю все встречающиеся имена переменных, чтобы «rho», «vt»,
@@ -1646,11 +1668,13 @@ export const CHAPTER_BY_ID = new Map(CHAPTERS.map((c) => [c.id, c]));
 export function formulaSearch(q) {
   const s = String(q || '').trim().toLowerCase();
   if (!s) return FORMULAS;
-  const words = s.split(/\s+/);
+  const words = s.split(/\s+/).filter(Boolean);
+  const aliases = { пифагора:['пифагор','гипотенуза','катет'], квадратного:['квадратное','дискриминант','виета'], производную:['производная','производн'], логарифм:['логарифмическ','логарифм'], прогрессии:['прогрессия','прогрессион'], интеграла:['интеграл','первообразная'], объема:['объём','объем','стереометрия'], вероятности:['вероятность','исход'] };
+  const expanded = words.flatMap(w => [w, ...(aliases[w] || []), ...(w.length > 5 ? [w.slice(0, Math.max(4, w.length - 2))] : [])]);
   return FORMULAS.map((f) => {
     const hay = [f.id, f.title, f.display, f.desc, f.example, f.sec, ...f.keywords, ...f.bullets].join(' ').toLowerCase();
     let score = 0;
-    for (const w of words) if (hay.includes(w)) score += w.length >= 4 ? 2 : 1;
+    for (const w of new Set(expanded)) if (hay.includes(w)) score += w.length >= 4 ? 2 : 1;
     if (f.title.toLowerCase().includes(s)) score += 6;
     if (f.display.toLowerCase().includes(s)) score += 4;
     return { f, score };

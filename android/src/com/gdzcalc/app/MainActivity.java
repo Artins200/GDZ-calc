@@ -47,7 +47,7 @@ public class MainActivity extends Activity {
         super.onCreate(state);
 
         FrameLayout root = new FrameLayout(this);
-        root.setBackgroundColor(Color.parseColor("#f4f5f7"));
+        root.setBackgroundColor(Color.parseColor("#0e1013"));
         root.setLayoutParams(new ViewGroup.LayoutParams(
                 ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.MATCH_PARENT));
 
@@ -65,13 +65,13 @@ public class MainActivity extends Activity {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.LOLLIPOP) {
             s.setMixedContentMode(WebSettings.MIXED_CONTENT_NEVER_ALLOW);
         }
-        web.setBackgroundColor(Color.parseColor("#f4f5f7"));
+        web.setBackgroundColor(Color.parseColor("#0e1013"));
         web.setOverScrollMode(View.OVER_SCROLL_NEVER);
 
-        // Светлый статус-бар с тёмными значками — под минималистичный интерфейс.
+        // Тёмный статус-бар в тон интерфейсу приложения.
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            getWindow().setStatusBarColor(Color.parseColor("#f4f5f7"));
-            getWindow().getDecorView().setSystemUiVisibility(View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR);
+            getWindow().setStatusBarColor(Color.parseColor("#0e1013"));
+            getWindow().getDecorView().setSystemUiVisibility(0);
         }
 
         web.setWebViewClient(new WebViewClient() {

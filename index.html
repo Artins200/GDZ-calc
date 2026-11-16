@@ -29,6 +29,7 @@
     <button type="button" class="tab" data-go="ineq">Неравенства</button>
     <button type="button" class="tab" data-go="task">Задачи</button>
     <button type="button" class="tab" data-go="interval">Прямая</button>
+    <button type="button" class="tab" data-go="graph">Графики</button>
   </nav>
 
   <main>
@@ -85,7 +86,7 @@
           <label class="col-toggle">
             <input type="checkbox" id="long-toggle">
             <span class="col-box"></span>
-            <span class="col-text">Считать в столбик</span>
+            <span class="col-text">Показывать решение по действиям</span>
           </label>
           <div class="col-out" id="long-out" hidden></div>
         </div>
@@ -133,6 +134,31 @@ A ∪ B">A ∩ B, A ∪ B</button>
         <input class="input" type="text" id="interval-input" value="[−2; 5)" autocomplete="off" spellcheck="false">
         <button class="btn primary wide" id="interval-go">Показать</button>
         <div class="out" id="interval-output"></div>
+      </div>
+    </section>
+
+    <!-- =============================== ГРАФИКИ ============================== -->
+    <section class="screen" id="screen-graph">
+      <div class="panel graph-panel">
+        <label class="field-label" for="graph-expressions">Функции (по одной на строку), прямые или точки</label>
+        <textarea id="graph-expressions" rows="3" spellcheck="false" placeholder="y = 2x + 1&#10;y = x^2&#10;точки: -2,3; 1,0"></textarea>
+        <div class="chips graph-presets">
+          <button type="button" data-graph="y = 2x + 1">y = kx + b</button>
+          <button type="button" data-graph="y = x^2">y = x²</button>
+          <button type="button" data-graph="y = x^3">y = x³</button>
+          <button type="button" data-graph="2x + y = 4&#10;x - y = 1">Система</button>
+          <button type="button" data-graph="кусочно: x &lt; 0: -x; x &gt;= 0: x">Кусочная</button>
+        </div>
+        <div class="graph-controls">
+          <button class="btn" id="graph-draw">Построить</button>
+          <button class="btn" id="graph-zoom-in" aria-label="Увеличить">＋</button>
+          <button class="btn" id="graph-zoom-out" aria-label="Уменьшить">−</button>
+          <button class="btn" id="graph-reset">Сбросить</button>
+        </div>
+        <div class="graph-frame"><canvas id="graph-canvas" aria-label="Координатная плоскость"></canvas></div>
+        <div class="graph-readout" id="graph-readout">Введите функцию и нажмите «Построить». Перетаскивайте поле для сдвига, касайтесь для координат.</div>
+        <div class="graph-table" id="graph-table"></div>
+        <p class="hint hint-note">Поддерживаются выражения (sin(x), sqrt(x)), кусочные записи «кусочно: x &lt; 0: -x; x &gt;= 0: x», несколько графиков, уравнения ax + by = c, полуплоскости y &lt; kx + b, точки x,y и линия через точки. Масштаб: кнопками или колёсиком; сдвиг — перетаскиванием.</p>
       </div>
     </section>
 

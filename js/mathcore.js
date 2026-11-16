@@ -141,12 +141,20 @@ export function preprocess(src) {
 const FUNCS = {
   sqrt: Math.sqrt, abs: Math.abs, cbrt: Math.cbrt, sign: Math.sign,
   floor: Math.floor, ceil: Math.ceil, round: Math.round,
-  ln: Math.log, sin: Math.sin, cos: Math.cos, tan: Math.tan,
+  ln: Math.log, log: Math.log10, lg: Math.log10, log10: Math.log10, log2: Math.log2,
+  exp: Math.exp,
+  sin: Math.sin, cos: Math.cos, tan: Math.tan, tg: Math.tan,
+  ctg: (x) => 1 / Math.tan(x),
+  asin: Math.asin, acos: Math.acos, atan: Math.atan, arctg: Math.atan,
 };
 const CONSTS = { PI: Math.PI, pi: Math.PI, e: Math.E };
 const isFunc = (name) => Object.prototype.hasOwnProperty.call(FUNCS, name);
 
-const FUNC_NAMES = new Set(['sqrt', 'abs', 'cbrt', 'pi', 'sin', 'cos', 'tan', 'log', 'ln', 'exp', 'min', 'max', 'round', 'floor', 'ceil']);
+const FUNC_NAMES = new Set([
+  'sqrt', 'abs', 'cbrt', 'pi', 'sin', 'cos', 'tan', 'tg', 'ctg',
+  'asin', 'acos', 'atan', 'arctg', 'log', 'lg', 'log10', 'log2', 'ln',
+  'exp', 'min', 'max', 'round', 'floor', 'ceil', 'sign',
+]);
 
 /* ---- реестр переменных -------------------------------------------------
  * Нужен, чтобы отличать «vt» (скорость течения) от «v·t» (произведение),
@@ -381,6 +389,72 @@ export function evaluate(src, scope = {}) {
   return compile(src)(scope);
 }
 
+/** Вычисляет числовое выражение и возвращает прозрачные промежуточные действия. */
+export function evaluateWithSteps(src, scope = {}) {
+  const tokens = withImplicitMultiplication(tokenize(src));
+  let pos = 0;
+  const peek = () => tokens[pos];
+  const op = (v) => peek()?.type === 'op' && peek().value === v;
+  const take = () => tokens[pos++];
+  function expression(min = 0) {
+    let node;
+    const t = take();
+    if (!t) throw new Error('Пустое выражение');
+    if (t.type === 'num') node = { type: 'value', value: t.value, text: t.text };
+    else if (t.type === 'op' && (t.value === '-' || t.value === '+')) {
+      const child = expression(30);
+      node = { type: 'unary', op: t.value, child, text: `${t.value}${child.text}` };
+    } else if (t.type === 'lparen') {
+      node = expression(0);
+      if (peek()?.type !== 'rparen') throw new Error('Не закрыта скобка');
+      take(); node.text = `(${node.text})`;
+    } else if (t.type === 'pipe') {
+      node = expression(0);
+      if (peek()?.type !== 'pipe') throw new Error('Не закрыт модуль');
+      take(); node = { type: 'abs', child: node, text: `|${node.text}|` };
+    } else if (t.type === 'ident') {
+      if (isFunc(t.value)) {
+        if (peek()?.type !== 'lparen') throw new Error(`После функции ${t.value} нужна скобка`);
+        take(); const arg = expression(0);
+        if (peek()?.type !== 'rparen') throw new Error('Не закрыта скобка функции');
+        take(); node = { type: 'func', name: t.value, child: arg, text: `${t.value}(${arg.text})` };
+      } else if (Object.prototype.hasOwnProperty.call(CONSTS, t.value)) {
+        node = { type: 'value', value: CONSTS[t.value], text: t.value };
+      } else if (Object.prototype.hasOwnProperty.call(scope, t.value)) {
+        const value = typeof scope[t.value] === 'function' ? scope[t.value](scope) : scope[t.value];
+        node = { type: 'value', value: Number(value), text: t.value };
+      } else throw new Error(`Неизвестная переменная «${t.value}»`);
+    } else throw new Error('Ожидалось число или переменная');
+    const prec = { '+': 10, '-': 10, '*': 20, '/': 20, '^': 30 };
+    while (peek()?.type === 'op' && prec[peek().value] >= min) {
+      const o = take().value, p = prec[o], right = expression(p + (o === '^' ? 0 : 1));
+      node = { type: 'binary', op: o, left: node, right, text: `${node.text} ${o} ${right.text}` };
+    }
+    return node;
+  }
+  const tree = expression();
+  if (pos < tokens.length) throw new Error('Лишняя часть выражения');
+  const steps = [];
+  function calc(n) {
+    if (n.type === 'value') return n.value;
+    if (n.type === 'unary') {
+      const a = calc(n.child), value = n.op === '-' ? -a : a;
+      steps.push(`${n.text} = ${fmt(value)}`); return value;
+    }
+    if (n.type === 'abs' || n.type === 'func') {
+      const a = calc(n.child), value = n.type === 'abs' ? Math.abs(a) : FUNCS[n.name](a);
+      steps.push(`${n.text} = ${fmt(value)}`); return value;
+    }
+    const a = calc(n.left), b = calc(n.right);
+    if (n.op === '/' && Math.abs(b) < 1e-14) throw new Error('Деление на нуль: выражение не имеет смысла');
+    const value = ({ '+': () => a + b, '-': () => a - b, '*': () => a * b, '/': () => a / b, '^': () => a ** b })[n.op]();
+    steps.push(`${n.left.text} ${n.op} ${n.right.text} = ${fmt(value)}`); return value;
+  }
+  const value = calc(tree);
+  if (!Number.isFinite(value)) throw new Error('Выражение не имеет числового значения');
+  return { value, steps: steps.map((s, i) => `${i + 1} действие: ${s}`) };
+}
+
 export function splitEquation(eq) {
   const parts = String(eq).split('=');
   if (parts.length !== 2) throw new Error('Нужно ровно одно равенство вида «левая часть = правая часть»');
@@ -430,6 +504,47 @@ export function solveEquation(eq, v = 'x', scope = {}, domain = [-100, 100]) {
       : 'Корней на рассмотренном промежутке не найдено');
   }
   return { type: roots.length ? 'one' : 'none', roots, steps };
+}
+
+/** Квадратное уравнение ax²+bx+c=0: формула дискриминанта и Виет. */
+export function solveQuadratic(a, b, c) {
+  if (![a, b, c].every(Number.isFinite) || Math.abs(a) < EPS) throw new Error('Коэффициент при x² должен быть ненулевым');
+  const D = b * b - 4 * a * c;
+  const steps = [`D = b² − 4ac = (${fmt(b)})² − 4·${fmt(a)}·${fmt(c)} = ${fmt(D)}`];
+  if (D < -EPS) return { type: 'none', roots: [], D, steps: [...steps, 'D < 0, действительных корней нет.'] };
+  if (Math.abs(D) <= EPS) {
+    const x = -b / (2 * a);
+    return { type: 'one', roots: [x], D: 0, steps: [...steps, `x = −b/(2a) = ${fmt(x)}`] };
+  }
+  const roots = [(-b - Math.sqrt(D)) / (2 * a), (-b + Math.sqrt(D)) / (2 * a)].sort((x, y) => x - y);
+  steps.push(`x₁,₂ = (−b ± √D)/(2a) = (${fmt(-b)} ± ${fmt(Math.sqrt(D))})/${fmt(2 * a)}`);
+  steps.push(`x₁ = ${fmt(roots[0])}, x₂ = ${fmt(roots[1])}`);
+  if (Math.abs(a - 1) < EPS) steps.push(`Проверка по Виету: x₁ + x₂ = ${fmt(roots[0] + roots[1])} = −b/a; x₁·x₂ = ${fmt(roots[0] * roots[1])} = c/a.`);
+  return { type: 'two', roots, D, steps };
+}
+
+/** Решение линейной системы удобным школьным методом: подстановка/сложение/графически. */
+export function solveSystemByMethod(equations, method = 'elimination', vars = ['x', 'y'], scope = {}) {
+  const base = solveSystem(equations, vars, scope);
+  const [vx, vy] = vars;
+  if (base.type !== 'one') return { ...base, method, steps: [...base.steps, base.note || ''] };
+  const rows = base.rows;
+  const [r1, r2] = rows;
+  let steps;
+  if (method === 'substitution') {
+    const row = Math.abs(r1.by) > EPS ? r1 : r2;
+    const other = row === r1 ? r2 : r1;
+    const yCoeff = row.by;
+    const yExpr = `(${fmt(-row.bx)}·${vx} ${row.c >= 0 ? '−' : '+'} ${fmt(Math.abs(row.c))})/${fmt(yCoeff)}`;
+    steps = [`Из первого удобного уравнения выразим ${vy}: ${vy} = ${yExpr}.`, `Подставим это выражение во второе уравнение и решим относительно ${vx}.`, `${vx} = ${fmt(base.values[vx])}. Подставим значение обратно: ${vy} = ${fmt(base.values[vy])}.`];
+  } else if (method === 'graphical') {
+    steps = [`Запишем каждое уравнение в виде ${vy} = k${vx} + b.`, `Построим две прямые по двум точкам для каждой; точка их пересечения является решением системы.`, `Пересечение: (${vx}; ${vy}) = (${fmt(base.values[vx])}; ${fmt(base.values[vy])}).`];
+  } else {
+    const k = Math.abs(r1.bx) >= Math.abs(r2.bx) ? -r2.bx / r1.bx : -r1.bx / r2.bx;
+    steps = [`Подберём множитель для исключения ${vx}; умножим одно уравнение так, чтобы коэффициенты при ${vx} стали противоположными.`, `Сложим уравнения: переменная ${vx} исключается, получаем ${vy} = ${fmt(base.values[vy])}.`, `Подставим ${vy} в исходное уравнение: ${vx} = ${fmt(base.values[vx])}.`];
+    if (!Number.isFinite(k)) steps[0] = 'Сложим уравнения после уравнивания коэффициентов, чтобы исключить одну переменную.';
+  }
+  return { ...base, method, steps };
 }
 
 export function numericRoots(f, domain = [-100, 100], steps = 4000) {

@@ -1,11 +1,13 @@
 /* =========================================================================
  * app.js — калькулятор: клавиатура, настройки (за шестернёй) и справочник.
  * ========================================================================= */
-import { fmt, fmtSmart, fmtPlain, solveFormula, evaluate, substituteText, checkIdentity, preprocess } from './mathcore.js';
+import { fmt, fmtSmart, fmtPlain, solveFormula, evaluate, evaluateWithSteps, substituteText, checkIdentity, preprocess } from './mathcore.js';
 import { FORMULAS, FORMULA_BY_ID, CHAPTER_BY_ID, BOOK, STATS, formulaSearch } from './formulas.js';
 import { solveTask, recomputeWith } from './tasks.js';
 import { parseInterval, describeInterval, numberLineSVG, intersect, union } from './intervals.js';
 import { solveInequality, longArithmetic, divideAngle } from './inequalities.js';
+import { classifyTask } from './classifier.js';
+import './grapher.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
@@ -16,11 +18,11 @@ const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').
  * ========================================================================= */
 const DEFAULTS = {
   screen: 'calc',        // что открывать при запуске: calc | task | interval
-  mode: 'answer',        // подробность ответа: answer | steps | full
+  mode: 'steps',         // по умолчанию показываем алгоритм и проверки; можно выбрать answer
   method: 'auto',        // способ решения в справочнике: auto | linear | numeric
   intervalFigure: true,  // рисовать числовую прямую
   intervalFill: true,    // закрашивать конец, если он входит
-  long: false,           // показывать запись в столбик
+  long: true,            // показывать запись и порядок действий в калькуляторе
 };
 const STORE_KEY = 'gdzcalc.settings.v1';
 
@@ -45,11 +47,12 @@ const SCREENS = {
   ineq: $('#screen-ineq'),
   task: $('#screen-task'),
   interval: $('#screen-interval'),
+  graph: $('#screen-graph'),
   settings: $('#screen-settings'),
   ref: $('#screen-ref'),
 };
 const TITLES = {
-  calc: 'Калькулятор', ineq: 'Неравенства', task: 'Задача', interval: 'Промежутки',
+  calc: 'Калькулятор', ineq: 'Неравенства', task: 'Задача', interval: 'Промежутки', graph: 'Графики',
   settings: 'Настройки', ref: 'Справочник',
 };
 let current = 'calc';
@@ -324,28 +327,14 @@ function simpleCheck(value) {
   return '';
 }
 
-/** Порядок действий для записи «по действиям». */
+/** AST-порядок действий — вложенные скобки, знаки и функции учитываются корректно. */
 function orderOfOperations(src) {
-  const steps = [];
-  let cur = String(src);
-  const re = /sqrt\(([^()]+)\)|\((-?\d+(?:\.\d+)?)\)\^(-?\d+)|(-?\d+(?:\.\d+)?)\^(-?\d+)|(-?\d+(?:\.\d+)?)([*/])(-?\d+(?:\.\d+)?)/;
-  let guard = 0;
-  while (guard++ < 12) {
-    const m = cur.match(re);
-    if (!m) break;
-    try {
-      let val, whole;
-      if (m[0].startsWith('sqrt')) { val = Math.sqrt(evaluate(m[1])); whole = m[0]; }
-      else if (m[2] !== undefined) { val = Number(m[2]) ** Number(m[3]); whole = m[0]; }
-      else if (m[4] !== undefined) { val = Number(m[4]) ** Number(m[5]); whole = m[0]; }
-      else { val = m[6] === '*' ? Number(m[4]) * Number(m[7]) : Number(m[4]) / Number(m[7]); whole = m[0]; }
-      const shown = String(Math.round(val * 1e12) / 1e12);
-      steps.push(`${prettyExpr(whole)} = ${fmt(Number(shown))}`);
-      cur = cur.replace(whole, shown);
-    } catch { break; }
+  try {
+    const result = evaluateWithSteps(src);
+    return result.steps.length ? result.steps : [`${prettyExpr(src)} — одно действие: ${fmt(result.value)}`];
+  } catch {
+    return [`${prettyExpr(src)} — вычисление по правилам порядка действий`];
   }
-  if (steps.length === 0) steps.push(`${prettyExpr(src)} — одно действие`);
-  return steps;
 }
 
 longToggle.addEventListener('change', () => {
@@ -492,6 +481,12 @@ function renderTask(sol) {
     <div class="answer-label">Ответ</div>
     <p class="answer-value">${esc(sol.answer)}</p>
   </div>`;
+  const verified = classifyTask(taskInput.value);
+  if (verified.ok) html += `<details class="verify-box"><summary>Тип задачи проверен в 2 этапа · ${esc(verified.label)}</summary>
+    <div><b>1. Распознавание:</b> ${esc(verified.stage1)}</div>
+    <div><b>2. Условие и ветвь:</b> ${esc(verified.stage2)}</div>
+    <ul>${verified.checks.map(c => `<li><span class="tick${c.ok ? '' : ' bad'}">${c.ok ? '✓' : '!'}</span> ${esc(c.text)}</li>`).join('')}</ul>
+  </details>`;
 
   // Предупреждение, если ответ противоречит вопросу или есть важное пояснение
   const notes = (sol.notes || []).filter(Boolean);

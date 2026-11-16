@@ -2,12 +2,13 @@
 import assert from 'node:assert/strict';
 import {
   evaluate, solveEquation, solveSystem, expandExpression, factorExpression,
-  checkIdentity, solveFormula, fmt, gcd, lcm, factorizationString,
+  checkIdentity, solveFormula, fmt, gcd, lcm, factorizationString, evaluateWithSteps, solveQuadratic, solveSystemByMethod,
 } from '../js/mathcore.js';
 import { FORMULAS, STATS, formulaSearch } from '../js/formulas.js';
 import { parseInterval, intersect, union, numberLineSVG, describeInterval } from '../js/intervals.js';
 import { solveTask, TASK_EXAMPLES, RULE_COUNT, recomputeWith, sanityCheck } from '../js/tasks.js';
 import { solveInequality, longArithmetic, divideAngle } from '../js/inequalities.js';
+import { classifyTask } from '../js/classifier.js';
 
 let passed = 0;
 const ok = (name, fn) => {
@@ -40,6 +41,17 @@ ok('степень и унарный минус −2² = −4', () => near(evalu
 ok('π и мнимая переменная', () => near(evaluate('2*PI*r', { r: 5 }), 31.4159265359));
 ok('модуль |b−a|', () => near(evaluate('abs(b-a)', { a: 7.45, b: 1.15 }), 6.3));
 ok('десятичная запятая 2,5+1,3', () => near(evaluate('2,5+1,3'), 3.8));
+ok('AST пошагового вычисления учитывает скобки и приоритет', () => {
+  const r = evaluateWithSteps('2*(3+4)^2'); near(r.value, 98); assert.equal(r.steps.length, 3); assert.match(r.steps[0], /3 \+ 4/);
+});
+ok('квадратное уравнение решается через дискриминант и проверяется Виетом', () => {
+  const r = solveQuadratic(1, -5, 6); assert.deepEqual(r.roots, [2, 3]); assert.ok(r.steps.some(s => s.includes('Виету')));
+});
+ok('системы имеют разбор по подстановке/сложению/графически', () => {
+  for (const method of ['substitution', 'elimination', 'graphical']) {
+    const r = solveSystemByMethod(['x+y=5', 'x-y=1'], method); near(r.values.x, 3); near(r.values.y, 2); assert.ok(r.steps.length >= 3);
+  }
+});
 ok('линейное уравнение 5(x−10)=2x+10 → 20', () => near(solveEquation('5*(x-10) = 2*x+10', 'x').roots[0], 20));
 ok('0x = 0 → бесконечно много корней', () => assert.equal(solveEquation('3*(x+2)+x = 6+4*x', 'x').type, 'many'));
 ok('x² = 4 → два корня', () => {
@@ -108,9 +120,12 @@ ok('все тождества верны при значениях по умол
   }
   assert.ok(checked > 25);
 });
-ok('поиск по учебнику', () => {
+ok('поиск по учебнику и старшим классам понимает родственные формулировки', () => {
   assert.ok(formulaSearch('квадрат суммы')[0]?.id === 'sq_sum');
   assert.ok(formulaSearch('полуинтервал').length >= 2);
+  assert.ok(formulaSearch('Пифагора').some(f => f.id === 'pythagoras'));
+  assert.ok(formulaSearch('арифметической прогрессии').some(f => f.id === 'arith_nth'));
+  assert.ok(formulaSearch('производную').some(f => f.id === 'derivative_power'));
 });
 
 console.log('\nЧИСЛОВЫЕ ПРОМЕЖУТКИ');
@@ -493,6 +508,29 @@ ok('проверка на разумность ловит ответ не в т�
   assert.equal(sanityCheck('через сколько часов они встретятся?', '300 км', 'км').ok, false);
   assert.equal(sanityCheck('сколько километров пролетит муха?', '3 ч', 'ч').ok, false);
   assert.equal(sanityCheck('каков шанс инфаркта?', '95%', '%').ok, true);
+});
+
+ok('квадратические и логарифмические неравенства с ОДЗ решаются', () => {
+  const q = solveInequality('x² − 5x + 6 < 0'); assert.equal(q.answerText, '(2; 3)');
+  const l = solveInequality('log_2(x) < 3'); assert.equal(l.answerText, '(0; 8)'); assert.ok(l.steps.some(s => s.includes('ОДЗ')));
+});
+ok('двухэтапный классификатор выбирает разные ветви условия', () => {
+  assert.match(classifyTask('Машины едут навстречу со скоростями 40 и 60 км/ч').stage2, /складываются/);
+  assert.match(classifyTask('Товар стоил 200 рублей, скидка 10 процентов.').stage2, /Скидка/);
+  assert.match(classifyTask('Работают вместе, за сколько часов?').stage2, /Совместная скорость/);
+});
+ok('двухэтапная арифметика различает сложение, умножение и деление', () => {
+  assert.equal(solveTask('На первой полке 12 книг, на второй 8. Сколько всего книг?').answer, '20');
+  assert.equal(solveTask('В каждой коробке по 6 карандашей. Таких коробок 4. Сколько всего?').answer, '24');
+  assert.equal(solveTask('24 конфеты разделили поровну между 6 детьми. Сколько каждому?').answer, '4');
+  assert.equal(solveTask('Было 17 карандашей, 5 продали. Сколько осталось?').answer, '12');
+});
+ok('дополнительные алгоритмы: Пифагор, прогрессия, сочетания, вероятность, производная', () => {
+  assert.equal(solveTask('В прямоугольном треугольнике катеты 3 и 4. Найдите гипотенузу.').answer, '5');
+  assert.equal(solveTask('a₁ = 3, d = 2. Найдите a₁₀.').answer, '21');
+  assert.equal(solveTask('Сколькими способами выбрать 3 из 8?').answer, '56');
+  assert.match(solveTask('Бросают кубик. Вероятность выпадения 4.').answer, /1\/6/);
+  assert.equal(solveTask("f(x) = 3x^4. Найдите f'(x).").answer, '12x^3');
 });
 
 console.log(`\nПройдено: ${passed} проверок\n`);
