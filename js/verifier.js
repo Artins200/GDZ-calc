@@ -84,7 +84,32 @@ export function verifySolution(sol, rawText) {
 
   // 3) Независимый пересчёт.
   const trace = sol.trace;
-  if (trace && trace.days) {
+  if (trace && trace.days && trace.days.some((d) => d.groups)) {
+    // Универсальная структура «дни × группы» (новички/игроки, слоны/жирафы, кг…).
+    const groups = trace.roles || Object.keys(trace.days[0].groups || {});
+    const dayTotal = (d) => groups.reduce((a, n) => a + (Number(d.groups?.[n]) || 0), 0);
+    const last = trace.days[trace.days.length - 1];
+    const sumAll = trace.days.reduce((a, d) => a + dayTotal(d), 0);
+    const q = trace.question || { kind: 'total' };
+    let expected = groups.reduce((a, n) => a + (Number(last.groups?.[n]) || 0), 0);
+    let how = 'итог на конец';
+    if (q.kind === 'sum') { expected = sumAll; how = 'сумма за все дни'; }
+    else if (q.kind === 'role' && q.role) {
+      const key = groups.find((n) => n === q.role) || groups.find((n) => (n || '').includes(q.role) || (q.role || '').includes(n)) || q.role;
+      expected = Number(last.groups?.[key]) || 0;
+      how = `итог группы «${key}»`;
+    }
+    add(near(answerNum, expected), 'Независимый пересчёт',
+      `По дням: ${trace.days.map((d) => `${groups.map((n) => `${n} ${d.groups?.[n] ?? 0}`).join(', ')} (итого ${norm(dayTotal(d))})`).join('; ')}. `
+      + `Вопрос: ${how} → ожидалось ${norm(expected)}.`, 3);
+    const sumGiven = trace.sumAll !== undefined ? trace.sumAll : sumAll;
+    add(near(sumAll, sumGiven), 'Сумма по частям', `Сумма по дням ${norm(sumAll)} = заявленному итогу ${norm(sumGiven)}.`, 2);
+    add(groups.every((n) => trace.days.every((d) => (Number(d.groups?.[n]) || 0) >= 0)), 'Роли не перепутаны',
+      `Группы (${groups.join(', ')}) считаются отдельно и неотрицательны.`, 2);
+    if (sol.alternatives?.length) {
+      add(true, 'Другая трактовка вопроса', sol.alternatives.map((a) => `${a.label}: ${norm(a.value)}`).join('; ') + ' — если учитель спрашивал это, ответ другой.', 1);
+    }
+  } else if (trace && trace.days) {
     const dayTotal = (d) => (d.total !== undefined ? d.total : (d.childrenTotal !== undefined ? d.childrenTotal : d.children + d.adults));
     const sumPeople = trace.sumPeople !== undefined ? trace.sumPeople : trace.totalPeople;
     const finalPeople = trace.finalPeople !== undefined ? trace.finalPeople : dayTotal(trace.days[trace.days.length - 1]);

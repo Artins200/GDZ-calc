@@ -15,6 +15,7 @@ import { FAMILY_BY_RULE } from './families.js';
 import { parseInterval, describeInterval, numberLineSVG, intersect, union } from './intervals.js';
 import { solveTopicTask } from './topic-solvers.js';
 import { solveMultiDay, looksLikeMultiDay } from './multiday.js';
+import { solveGroupedTask } from './groups.js';
 import { verifySolution, detectQuestionKind } from './verifier.js';
 import { solveItTask } from './it.js';
 import { solveGeoTask } from './geo.js';
@@ -2756,9 +2757,18 @@ export function solveTask(raw, options = {}) {
       return cardToSolution(card, 'geometry');
     }
   }
+  // 1) Специализированный разбор «дети/взрослые/предметы» — там есть точные
+  //    правила для «на N раз меньше» и вопросов по ролям.
   const multiDay = solveMultiDay(raw);
   if (multiDay) {
     const sol = { ...multiDay, confidence: 99, rawSteps: multiDay.steps, steps: toActions(multiDay.steps), checks: multiDay.checks || [], variants: [], notes: multiDay.notes || [], inputs: {}, related: [], formulaIds: [] };
+    sol.verification = verifySolution(sol, raw);
+    return sol;
+  }
+  // 2) Универсальный разбор по группам: новички/игроки, мальчики/девочки и т. п.
+  const grouped = solveGroupedTask(raw);
+  if (grouped) {
+    const sol = { ...grouped, rawSteps: grouped.steps, steps: toActions(grouped.steps), checks: [], variants: [], inputs: {}, related: [], formulaIds: [] };
     sol.verification = verifySolution(sol, raw);
     return sol;
   }

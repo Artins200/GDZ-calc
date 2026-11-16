@@ -13,6 +13,8 @@ import { convertInfoSize, convertBase, solveItTask, parseInfoSize, powerOfTwo } 
 import { solveGeoTask, triangleArea, rightTriangle, triangleHeron, adjacentAngles } from '../js/geo.js';
 import { solveMultiDay } from '../js/multiday.js';
 import { verifySolution } from '../js/verifier.js';
+import { findNamedGroups, findMentions } from '../js/lexicon.js';
+import { solveGroupedTask, splitByDays } from '../js/groups.js';
 
 let passed = 0;
 const ok = (name, fn) => {
@@ -531,7 +533,7 @@ ok('двухэтапная арифметика различает сложен�
 });
 ok('цепочка дней: каждое значение считается от предыдущего', () => {
   const q = 'На сво отдали 30 детей в первый день, во второй день отдали в 3 раза больше, а в 3 дне стало на 2 раза меньше, сколько детей осталось?';
-  assert.equal(solveTask(q).answer, '45 детей');
+  assert.equal(solveTask(q).answer, '45 человек');
   assert.equal(solveTask('В первый день было 40 яблок, во второй день стало на 5 больше. Сколько яблок стало?').answer, '45 яблок');
   assert.equal(solveTask('В первый день на складе было 120 ящиков, во второй день увезли 40 ящиков, а в третий день привезли 15 ящиков. Сколько ящиков стало?').answer, '95 ящиков');
 
@@ -604,4 +606,67 @@ ok('дополнительные алгоритмы: Пифагор, прогр�
   assert.equal(solveTask("f(x) = 3x^4. Найдите f'(x).").answer, '12x^3');
 });
 
+console.log('\nСЛОВАРЬ И РАЗБОР ПО ГРУППАМ');
+ok('словарь находит группы людей, животных и предметов', () => {
+  assert.deepEqual(findNamedGroups('80 новичков и 15 опытных игроков').map((g) => g.name), ['новичков', 'опытных игроков']);
+  assert.deepEqual(findNamedGroups('15 слонов и 20 жирафов').map((g) => g.name), ['слонов', 'жирафов']);
+  assert.deepEqual(findNamedGroups('240 кг картофеля').map((g) => g.name), ['картофеля']);
+  assert.deepEqual(findNamedGroups('120 детей и 20 взрослых').map((g) => g.name), ['детей', 'взрослых']);
+});
+
+ok('словарь не ловит «фею» в картофеле и «ос» в вопросе', () => {
+  assert.ok(!findMentions('в магазин привезли 240 кг картофеля').some((m) => m.word === 'феля'));
+  assert.ok(!findMentions('привезли 240 кг картофеля').some((m) => m.category === 'people'));
+  assert.deepEqual(findMentions('который вопрос').map((m) => m.word), []);
+  assert.deepEqual(findMentions('этот вопрос сложный').map((m) => m.word), []);
+});
+
+ok('групповая задача: 80 новичков + 15 опытных, +40, −25, опытные ×3 → 140', () => {
+  const q = 'В первый день запуска нового игрового сервера на него зашли 80 новичков и 15 опытных игроков. Во второй день присоединились ещё 40 новичков. В третий день 25 новичков вышли из игры, но количество опытных игроков увеличилось в 3 раза.';
+  const r = solveGroupedTask(q);
+  assert.equal(r.answer, '140 человек');
+  assert.equal(r.trace.days[2].groups['новичков'], 95);
+  assert.equal(r.trace.days[2].groups['опытных игроков'], 45);
+  assert.ok(r.steps.some((s) => s.includes('80') && s.includes('15')), 'в шагах есть база решения');
+});
+
+ok('групповая задача: 120 детей и 20 взрослых, +50 детей, −20 детей, взрослые ×2 → 190', () => {
+  const q = 'В первый день на сво ушло 120 детей и 20 взрослых, во второй день пришло ещё 50 детей, а в третий день на 20 детей стало меньше, но в 2 раза больше взрослых, сколько всего всех вместе?';
+  const r = solveGroupedTask(q);
+  assert.equal(r.answer, '190 человек');
+  assert.equal(r.trace.days[2].groups['детей'], 150);
+  assert.equal(r.trace.days[2].groups['взрослых'], 40);
+});
+
+ok('групповая задача: мальчики и девочки считаются отдельно', () => {
+  const q = 'В первый день в секцию записались 30 мальчиков и 25 девочек. Во второй день пришли ещё 10 мальчиков, а девочек стало в 2 раза больше. Сколько всего детей в секции?';
+  assert.equal(solveGroupedTask(q).answer, '90 человек');
+});
+
+ok('групповая задача: животные и сумма за все дни', () => {
+  assert.equal(solveGroupedTask('В первый день в зоопарке было 15 слонов и 20 жирафов. Во второй день привезли ещё 5 слонов, а жирафов стало в 2 раза меньше. Сколько всего животных в зоопарке?').answer, '30 животных');
+  const r = solveGroupedTask('В первый день в магазин привезли 240 кг картофеля, во второй день — на 60 кг меньше, а в третий день привезли в 2 раза больше, чем во второй. Сколько картофеля привезли за три дня?');
+  assert.equal(r.answer, '780 кг');
+  assert.equal(r.asked, 'sum');
+});
+
+ok('групповая задача: вопрос про конкретную группу', () => {
+  const r = solveGroupedTask('В первый день было 80 детей и 15 взрослых, во второй день ушло 20 детей. Сколько детей осталось?');
+  assert.equal(r.answer, '60 человек');
+  assert.equal(r.asked, 'role');
+});
+
+ok('дни режутся по маркерам', () => {
+  assert.equal(splitByDays('В первый день 5, во второй день 6, в третий день 7').length, 3);
+});
+
+ok('проверяющая система понимает группы (score 1.00)', () => {
+  const q = 'В первый день запуска на сервер зашли 80 новичков и 15 опытных игроков. Во второй день присоединились ещё 40 новичков. В третий день 25 новичков вышли из игры, но количество опытных игроков увеличилось в 3 раза.';
+  const sol = solveTask(q);
+  assert.equal(sol.answer, '140 человек');
+  assert.ok(sol.verification.score >= 0.99);
+  assert.ok(sol.verification.checks.some((c) => c.title === 'Независимый пересчёт' && c.ok));
+});
+
 console.log(`\nПройдено: ${passed} проверок\n`);
+
