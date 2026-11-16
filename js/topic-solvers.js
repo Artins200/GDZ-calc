@@ -11,6 +11,159 @@ function equationTask(s) {
   const eq=tidy(m[1]); const q=polyCoefficients(eq); if(!q)return null;
   const r=solveQuadratic(q.a,q.b,q.c);return result(r.roots.length?r.roots.map(fmt).join('; '):'действительных корней нет',r.steps,'Квадратное уравнение');
 }
+
+/* ------------------------------------------------------------------------
+ * Задачи «в несколько действий»: количество меняется по дням/этапам.
+ * «В первый день 30, во второй — в 3 раза больше, в третий — в 2 раза
+ * меньше». Каждое следующее число считается от предыдущего, а не от
+ * первого, и «на N раз меньше» понимаем как «в N раз меньше».
+ * ---------------------------------------------------------------------- */
+const DAY_MARK = /(?:перв|втор|трет|четверт|пят|шест|седьм|восьм|девят|десят)[а-яё]*\s*(?:день|дня|дне|дню|днем|сутк)|\d+\s*(?:-?й\s*)?(?:день|дня|дне|дню|сутк)|(?:этап|смен|недел|тур)/i;
+
+export function solveMultiDayQuantity(raw) {
+  const src = String(raw || '').replace(/ё/gi, 'е');
+  const s = src.toLowerCase();
+  if (!DAY_MARK.test(s)) return null;
+
+  // Режем на шаги: запятые, точки с запятой, «а», «затем», «потом».
+  const parts = s.split(/[,;.](?=\s|$)|\s+а\s+|\s+затем\s+|\s+потом\s+|\s+после\s+этого\s+/i)
+    .map((t) => t.trim()).filter(Boolean);
+  if (parts.length < 2) return null;
+
+  // Вопрос может быть отделён: «… за три дня?» — тогда нужен итог, а не последнее число.
+  const wantsTotal = /сколько\s+(?:всего\s+)?[^?]*(?:за\s+(?:три|два|все|эти|неделю|месяц)|всего|итого|вместе|за\s+все)/i.test(s)
+    && !/сколько\s+(?:осталось|останет|стало|будет|детей|яблок)/i.test(s);
+
+  // Операция шага: «в 3 раза больше», «на 2 раза меньше» (по смыслу — деление),
+  // «на 5 больше» — прибавление. Первое совпадение в куске текста — главное.
+  const stepOp = (t) => {
+    let m = t.match(/в\s*(\d+(?:[.,]\d+)?)\s*раз[а]?\s*(больше|меньше|дороже|дешевле)/i);
+    if (m) return { value: Number(m[1].replace(',', '.')), dir: /меньше|дешевле/.test(m[2]) ? -1 : 1, kind: 'mul' };
+    m = t.match(/на\s*(\d+(?:[.,]\d+)?)\s*раз[а]?\s*(больше|меньше)/i);
+    if (m) return { value: Number(m[1].replace(',', '.')), dir: /меньше/.test(m[2]) ? -1 : 1, kind: 'mul' };
+    m = t.match(/(вдвое|втрое|вчетверо)\s*(больше|меньше)/i);
+    if (m) {
+      const k = { вдвое: 2, втрое: 3, вчетверо: 4 }[m[1].toLowerCase()] || 2;
+      return { value: k, dir: /меньше/.test(m[2]) ? -1 : 1, kind: 'mul' };
+    }
+    m = t.match(/на\s*(\d+(?:[.,]\d+)?)\s*(?:кг|км|м|шт|чел|руб|л)?\s*(больше|меньше)/i);
+    if (m) return { value: Number(m[1].replace(',', '.')), dir: /меньше/.test(m[2]) ? -1 : 1, kind: 'add' };
+    // Чистое прибавление/убавление без сравнения: «увезли 40 ящиков», «продали 25 кг».
+    if (/больше|меньше|дороже|дешевле/.test(t)) return null;
+    m = t.match(/(привез|прибав|добав|приехал|купил|собрал|посадил|увез|убрал|продал|отдал|уехал|израсход|потрат|съел|подарил|выдал|отправ|улетел|выгрузил|погрузил)[а-яё]*(?:\s+ещ[её])?\s+(\d+(?:[.,]\d+)?)/i);
+    if (m && DAY_MARK.test(t)) {
+      const dir = /увез|убра|прода|отда|уеха|израсход|потрат|съел|подар|выдал|отправ/.test(m[1]) ? -1 : 1;
+      return { value: Number(m[2].replace(',', '.')), dir, kind: 'add' };
+    }
+    return null;
+  };
+
+  // Начальное количество — первое число условия. Кусок текста с этим числом
+  // описывает исходные данные, а не изменение, поэтому операцию из него не берём.
+  const firstM = s.match(/(\d+(?:[.,]\d+)?)\s*([а-яё]{2,})?/);
+  if (!firstM) return null;
+  const start = Number(firstM[1].replace(',', '.'));
+  if (!Number.isFinite(start)) return null;
+  const startPart = parts.findIndex((t) => t.includes(firstM[1].replace('.', ',')) || t.includes(firstM[1]));
+
+  const ops = [];
+  parts.forEach((t, i) => {
+    if (i === startPart) return;
+    if (/сколько|найдите|чему|каков|определ|во сколько|итого|всего/.test(t) && !/раз[а]?\s*(больше|меньше)/i.test(t)) return;
+    const op = stepOp(t);
+    if (op) ops.push({ ...op, text: t });
+  });
+  if (!ops.length) return null;
+
+  const UNIT = [
+    ['кг', 'кг'], ['килограм', 'кг'], ['км', 'км'], ['метр', 'м'], ['см', 'см'],
+    ['руб', 'руб.'], ['литр', 'л'], ['штук', 'шт.'], ['человек', 'человек'],
+    ['ребен', 'детей'], ['дет', 'детей'], ['ученик', 'учеников'], ['книг', 'книг'],
+    ['яблок', 'яблок'], ['гриб', 'грибов'], ['конфет', 'конфет'], ['машин', 'машин'],
+    ['монет', 'монет'], ['карандаш', 'карандашей'], ['тетрад', 'тетрадей'],
+    ['шаг', 'шагов'], ['лист', 'листов'], ['дерев', 'деревьев'], ['цвет', 'цветов'],
+    ['рыб', 'рыб'], ['птиц', 'птиц'], ['банк', 'банок'], ['ящик', 'ящиков'],
+  ];
+  const unitFrom = (word) => {
+    const w = String(word || '').toLowerCase();
+    const hit = UNIT.find(([stem]) => w.startsWith(stem));
+    return hit ? hit[1] : '';
+  };
+  let unitWord = unitFrom(firstM[2]);
+  if (!unitWord) {
+    const tail = s.slice(s.indexOf(firstM[0]) + firstM[0].length);
+    const u = tail.match(/^\s*([а-яё.]{2,12})/);
+    unitWord = u ? unitFrom(u[1]) : '';
+  }
+
+  // Считаем по шагам: каждое следующее значение — от предыдущего.
+  const values = [start];
+  const steps = [];
+  const labels = ['первый', 'второй', 'третий', 'четвёртый', 'пятый', 'шестой', 'седьмой'];
+  steps.push(`1) Данные первого дня: ${fmt(start)}${unitWord ? ' ' + unitWord : ''} — это исходное количество, его не умножаем и не вычитаем.`);
+  const ORD = [/(?:чем\s+)?в\s+перв(?:ый|ом|ого)\s*(?:день|дня)?/i, /(?:чем\s+)?во\s+втор(?:ой|ом|ого)\s*(?:день|дня)?/i, /(?:чем\s+)?в\s+трет(?:ий|ьем|ьего)\s*(?:день|дня)?/i];
+  ops.forEach((op, k) => {
+    // «…, чем в первый день» — считаем от первого дня, а не от предыдущего.
+    let baseIndex = values.length - 1;
+    const cmp = op.text.match(/(?:чем|как)\s+в\s+(перв|втор|трет|четверт|пят)\w*\s*(?:день|дня)/i);
+    if (cmp) {
+      const idx = ['перв', 'втор', 'трет', 'четверт', 'пят'].indexOf(cmp[1].toLowerCase());
+      if (idx >= 0 && idx < values.length) baseIndex = idx;
+    }
+    const before = values[baseIndex];
+    const after = op.kind === 'add'
+      ? (op.dir > 0 ? before + op.value : before - op.value)
+      : (op.dir > 0 ? before * op.value : before / op.value);
+    values.push(after);
+    const sign = op.kind === 'add' ? (op.dir > 0 ? '+' : '−') : (op.dir > 0 ? '·' : ':');
+    const word = op.kind === 'add'
+      ? `на ${fmt(op.value)} ${op.dir > 0 ? 'больше' : 'меньше'}`
+      : `в ${fmt(op.value)} раз${op.value === 1 ? '' : 'а'} ${op.dir > 0 ? 'больше' : 'меньше'}`;
+    const verb = op.dir > 0 ? (op.kind === 'add' ? 'прибавляем' : 'умножаем на') : (op.kind === 'add' ? 'вычитаем' : 'делим на');
+    const day = labels[k + 1] ? labels[k + 1] + ' день' : `${k + 2}-й шаг`;
+    const fromText = baseIndex === values.length - 2 ? 'предыдущее значение' : `значение ${labels[baseIndex] || 'первого'} дня`;
+    steps.push(`${k + 2}) ${day}: ${word} — берём ${fromText} ${fmt(before)} и ${verb} ${fmt(op.value)}: ${fmt(before)} ${sign} ${fmt(op.value)} = ${fmt(after)}${unitWord ? ' ' + unitWord : ''}.`);
+  });
+
+  if (values.some((v) => !Number.isFinite(v) || v < 0)) return null; // отрицательных детей/яблок не бывает
+
+  let answer = values[values.length - 1];
+  if (wantsTotal) {
+    answer = values.reduce((a, b) => a + b, 0);
+    steps.push(`${ops.length + 2}) Итог за все дни: ${values.map((v) => fmt(v)).join(' + ')} = ${fmt(answer)}${unitWord ? ' ' + unitWord : ''}.`);
+  } else {
+    steps.push(`${ops.length + 2}) Ответ: ${fmt(answer)}${unitWord ? ' ' + unitWord : ''}.`);
+  }
+
+  // Проверка обратным действием от последнего значения.
+  const last = ops[ops.length - 1];
+  const checks = [];
+  if (last) {
+    const back = last.kind === 'add'
+      ? (last.dir > 0 ? values[values.length - 1] - last.value : values[values.length - 1] + last.value)
+      : (last.dir > 0 ? values[values.length - 1] / last.value : values[values.length - 1] * last.value);
+    checks.push({
+      title: 'Проверка обратным действием',
+      ok: Math.abs(back - values[values.length - 2]) < 1e-9,
+      detail: `Возвращаемся на шаг назад: ${fmt(values[values.length - 1])} ${last.dir > 0 ? (last.kind === 'add' ? '−' : ':') : (last.kind === 'add' ? '+' : '·')} ${fmt(last.value)} = ${fmt(back)} — снова получили предыдущее количество ${fmt(values[values.length - 2])}.`,
+    });
+  }
+
+  const notes = [];
+  if (/на\s*\d+\s*раз[а]?\s*(?:больше|меньше)/i.test(s)) notes.push('В условии написано «на … раз больше/меньше» — по смыслу это «в … раз», поэтому умножаем или делим, а не прибавляем.');
+  notes.push('Каждое следующее число считается от предыдущего дня, а не от первого.');
+
+  return {
+    ok: true,
+    answer: `${fmt(answer)}${unitWord ? ' ' + unitWord : ''}`,
+    steps,
+    checks,
+    topic: wantsTotal ? 'Задача в несколько действий (итог)' : 'Задача в несколько действий',
+    notes,
+    inputs: {},
+  };
+}
+
 export function solveTopicTask(raw) {
  const s=String(raw||'').replace(/ё/gi,'е'); let m;
  // Pythagoras

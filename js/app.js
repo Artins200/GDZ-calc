@@ -7,6 +7,8 @@ import { solveTask, recomputeWith } from './tasks.js';
 import { parseInterval, describeInterval, numberLineSVG, intersect, union } from './intervals.js';
 import { solveInequality, longArithmetic, divideAngle } from './inequalities.js';
 import { classifyTask } from './classifier.js';
+import { INFO_UNITS, convertInfoSize, convertBase, parseInfoSize, solveItTask } from './it.js';
+import { GEO_TOOLS, solveGeoTask } from './geo.js';
 import './grapher.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -23,6 +25,7 @@ const DEFAULTS = {
   intervalFigure: true,  // рисовать числовую прямую
   intervalFill: true,    // закрашивать конец, если он входит
   long: true,            // показывать запись и порядок действий в калькуляторе
+  subject: 'school',     // school | it | geo — профильный режим (можно включить и вручную)
 };
 const STORE_KEY = 'gdzcalc.settings.v1';
 
@@ -48,11 +51,14 @@ const SCREENS = {
   task: $('#screen-task'),
   interval: $('#screen-interval'),
   graph: $('#screen-graph'),
+  info: $('#screen-info'),
+  geo: $('#screen-geo'),
   settings: $('#screen-settings'),
   ref: $('#screen-ref'),
 };
 const TITLES = {
   calc: 'Калькулятор', ineq: 'Неравенства', task: 'Задача', interval: 'Промежутки', graph: 'Графики',
+  info: 'Информатика', geo: 'Геометрия',
   settings: 'Настройки', ref: 'Справочник',
 };
 let current = 'calc';
@@ -454,7 +460,15 @@ function labelForVar(sol, key, value) {
 function runTask() {
   const text = taskInput.value.trim();
   if (!text) { taskResult.innerHTML = '<div class="err">Введите условие задачи.</div>'; return; }
-  renderTask(solveTask(text));
+  const mode = settings.subject === 'it' ? 'informatics' : settings.subject === 'geo' ? 'geometry' : '';
+  const sol = solveTask(text, mode ? { mode } : {});
+  if (!sol.ok && mode) {
+    // профильный решатель не понял — пробуем обычные шаблоны, но не выдаём ложный ответ
+    const fallback = solveTask(text);
+    renderTask(fallback.ok ? fallback : sol);
+    return;
+  }
+  renderTask(sol);
 }
 
 // Человеческие названия семейств для подсказки модели.
@@ -607,10 +621,19 @@ $('#interval-input').addEventListener('keydown', (e) => { if (e.key === 'Enter')
  * ========================================================================= */
 const CHOICES = [
   {
+    key: 'subject', title: 'Режим предмета', options: [
+      { v: 'school', t: 'Обычная математика', s: 'калькулятор, задачи, графики' },
+      { v: 'it', t: 'Информатика', s: 'биты и байты, N = K^i, системы счисления, «Дано»' },
+      { v: 'geo', t: 'Геометрия', s: 'фигуры, углы, площади и объёмы, «Дано» по Атанасяну' },
+    ],
+  },
+  {
     key: 'screen', title: 'Что открывать при запуске', options: [
       { v: 'calc', t: 'Калькулятор', s: 'обычный счёт на клавиатуре' },
       { v: 'task', t: 'Задача', s: 'сразу решать текстовые задачи' },
       { v: 'interval', t: 'Промежутки', s: 'числовые промежутки и неравенства' },
+      { v: 'info', t: 'Информатика', s: 'единицы информации и системы счисления' },
+      { v: 'geo', t: 'Геометрия', s: 'калькуляторы фигур и тел' },
     ],
   },
   {
@@ -670,6 +693,8 @@ function renderSettings() {
     else if (name === 'long') { settings.long = value === 'on'; syncLongToggle(); }
     else settings[name] = value;
     saveSettings();
+    if (name === 'subject') applySubjectMode(value);
+    if (name === 'screen') applySubjectMode(settings.subject);
   }));
 }
 
@@ -685,6 +710,144 @@ $$('.tab').forEach((b) => b.addEventListener('click', () => show(b.dataset.go)))
 $$('[data-close-settings]').forEach((b) => b.addEventListener('click', () => show(current === 'settings' ? 'calc' : current)));
 $('#open-reference').addEventListener('click', () => show('ref'));
 $('#ref-back').addEventListener('click', () => show('settings'));
+
+/* =========================================================================
+ * РЕЖИМ ПРЕДМЕТА: «Обычная математика / Информатика / Геометрия»
+ * Вкладки не прячем — просто подсвечиваем нужную и открываем её.
+ * ========================================================================= */
+function applySubjectMode(subject, { navigate = true } = {}) {
+  const tabs = $$('.tab');
+  tabs.forEach((b) => {
+    const isSubjectTab = b.dataset.go === 'info' || b.dataset.go === 'geo';
+    b.classList.toggle('subject-tab', isSubjectTab);
+    b.classList.toggle('subject-on', (subject === 'it' && b.dataset.go === 'info') || (subject === 'geo' && b.dataset.go === 'geo'));
+  });
+  if (!navigate) return;
+  if (subject === 'it') show('info');
+  else if (subject === 'geo') show('geo');
+}
+
+/* =========================================================================
+ * ИНФОРМАТИКА
+ * ========================================================================= */
+function initInfo() {
+  const unitSel = $('#info-unit');
+  const fromSel = $('#base-from');
+  const toSel = $('#base-to');
+  if (!unitSel) return;
+
+  unitSel.innerHTML = INFO_UNITS.map((u) => `<option value="${u.id}" data-short="${esc(u.short)}">${esc(u.short)} — ${esc(u.name)}</option>`).join('');
+  unitSel.value = 'GB';
+  const baseOptions = Array.from({ length: 35 }, (_, i) => i + 2)
+    .map((b) => `<option value="${b}">${b}</option>`).join('');
+  fromSel.innerHTML = baseOptions; toSel.innerHTML = baseOptions;
+  fromSel.value = '2'; toSel.value = '10';
+
+  const renderConvert = () => {
+    const raw = $('#info-size').value;
+    const short = unitSel.options[unitSel.selectedIndex]?.dataset.short || 'Б';
+    const size = parseInfoSize(`${raw} ${short}`);
+    const out = $('#info-out');
+    if (!size) { out.innerHTML = '<div class="err">Введите число, например 1,5.</div>'; return; }
+    const binary = $('#info-binary').checked;
+    const rows = convertInfoSize(size.value, size.unit, { binary });
+    out.innerHTML = `<div class="answer" style="margin-top:10px">
+        <div class="answer-label">${esc(`${raw} ${short}`)}</div>
+        <p class="answer-value" style="font-size:1.2rem">${rows.map((r) => `${fmtSmart(r.value)} ${esc(r.unit)}`).join('<br>')}</p>
+      </div>
+      ${SHOW_STEPS() ? `<details class="more"${SHOW_ALL() ? ' open' : ''}><summary>Как переводили</summary><div class="more-body"><ol class="steps">
+        <li>1 байт = 8 бит.</li>
+        <li>1 ${binary ? 'КБ = 1024 Б' : 'КБ = 1000 Б'} (${binary ? 'двоичная' : 'десятичная'} система приставок).</li>
+        <li>Сначала переводим в байты, потом делим на степень ${binary ? 1024 : 1000}.</li>
+      </ol></div></details>` : ''}`;
+  };
+  $('#info-convert').addEventListener('click', renderConvert);
+  $('#info-size').addEventListener('keydown', (e) => { if (e.key === 'Enter') renderConvert(); });
+  $('#info-binary').addEventListener('change', renderConvert);
+
+  $('#base-convert').addEventListener('click', () => {
+    const value = $('#base-value').value.trim();
+    const r = convertBase(value, Number(fromSel.value), Number(toSel.value));
+    const out = $('#base-out');
+    if (!r) { out.innerHTML = '<div class="err">Не получилось: проверьте цифры числа и основания (2…36).</div>'; return; }
+    out.innerHTML = `<div class="answer" style="margin-top:10px">
+        <div class="answer-label">Ответ</div>
+        <p class="answer-value" style="font-size:1.4rem">${esc(r.result)}</p>
+        <p class="answer-sub">${esc(value)} из ${fromSel.value}-й в ${toSel.value}-ю</p>
+      </div>
+      ${SHOW_STEPS() ? `<details class="more"${SHOW_ALL() ? ' open' : ''}><summary>По шагам</summary><div class="more-body"><ol class="steps">${r.steps.map((t) => `<li>${esc(t)}</li>`).join('')}</ol></div></details>` : ''}`;
+  });
+
+  const solveInfo = () => {
+    const text = $('#info-task').value.trim();
+    const out = $('#info-task-out');
+    if (!text) { out.innerHTML = '<div class="err">Введите задачу.</div>'; return; }
+    const card = solveItTask(text);
+    if (!card) { out.innerHTML = '<div class="err">Не удалось разобрать задачу. Укажите данные и вопрос, например: «сколько МБ в 2 ГБ».</div>'; return; }
+    out.innerHTML = renderCard(card);
+  };
+  $('#info-solve').addEventListener('click', solveInfo);
+  $$('[data-info]').forEach((b) => b.addEventListener('click', () => { $('#info-task').value = b.dataset.info; solveInfo(); }));
+}
+
+/** Карточка «Дано — Найти — Решение — Ответ» (общая для информатики и геометрии). */
+function renderCard(card) {
+  const list = (arr, mono = false) => arr.map((x) => `<span class="${mono ? 'mono' : ''}">${esc(typeof x === 'string' ? x : `${x.label} = ${x.value}`)}</span>`).join('<br>');
+  return `<div class="card">
+    <div class="card-title">${esc(card.title)}</div>
+    <div class="card-part"><b>Дано:</b><br>${list(card.given || [])}</div>
+    <div class="card-part"><b>Найти:</b><br>${list(card.find || [])}</div>
+    ${(card.formulas || []).length ? `<div class="card-part"><b>Формулы:</b><br>${list(card.formulas)}</div>` : ''}
+    ${SHOW_STEPS() ? `<div class="card-part"><b>Решение:</b><ol class="steps">${(card.solution || card.steps || []).map((t) => `<li>${esc(t)}</li>`).join('')}</ol></div>` : ''}
+    <div class="answer" style="margin-top:10px"><div class="answer-label">Ответ</div><p class="answer-value" style="font-size:1.25rem">${esc(card.answer)}</p></div>
+  </div>`;
+}
+
+/* =========================================================================
+ * ГЕОМЕТРИЯ
+ * ========================================================================= */
+function initGeo() {
+  const toolSel = $('#geo-tool');
+  if (!toolSel) return;
+  toolSel.innerHTML = GEO_TOOLS.map((t) => `<option value="${t.id}">${esc(t.title)}</option>`).join('');
+
+  const drawFields = () => {
+    const tool = GEO_TOOLS.find((t) => t.id === toolSel.value) || GEO_TOOLS[0];
+    $('#geo-fields').innerHTML = tool.fields.map(([key, label, def]) => `
+      <div class="field">
+        <label for="geo-${esc(key)}"><span>${esc(label)}</span></label>
+        <input type="text" id="geo-${esc(key)}" data-geo-field="${esc(key)}" value="${esc(String(def))}" inputmode="decimal" autocomplete="off">
+      </div>`).join('');
+  };
+  const runTool = () => {
+    const tool = GEO_TOOLS.find((t) => t.id === toolSel.value) || GEO_TOOLS[0];
+    const values = tool.fields.map(([key]) => parseNum($(`[data-geo-field="${key}"]`)?.value));
+    const out = $('#geo-out');
+    if (values.some((v) => v === null)) { out.innerHTML = '<div class="err">Заполните все поля числами.</div>'; return; }
+    const card = tool.run(values);
+    if (!card) { out.innerHTML = '<div class="err">Не удалось посчитать: проверьте данные.</div>'; return; }
+    if (card.error) { out.innerHTML = `<div class="err">${esc(card.error)}</div>`; return; }
+    out.innerHTML = renderCard(card);
+  };
+  toolSel.addEventListener('change', () => { drawFields(); runTool(); });
+  $('#geo-calc').addEventListener('click', runTool);
+  $('#geo-fields').addEventListener('keydown', (e) => { if (e.key === 'Enter') runTool(); });
+
+  const solveGeoTab = () => {
+    const text = $('#geo-task').value.trim();
+    const out = $('#geo-task-out');
+    if (!text) { out.innerHTML = '<div class="err">Введите задачу.</div>'; return; }
+    const card = solveGeoTask(text);
+    if (!card) { out.innerHTML = '<div class="err">Не удалось разобрать. Укажите фигуру и данные: «площадь треугольника, основание 8, высота 5».</div>'; return; }
+    if (card.error) { out.innerHTML = `<div class="err">${esc(card.error)}</div>`; return; }
+    out.innerHTML = renderCard(card);
+  };
+  $('#geo-solve').addEventListener('click', solveGeoTab);
+  $$('[data-geo]').forEach((b) => b.addEventListener('click', () => { $('#geo-task').value = b.dataset.geo; solveGeoTab(); }));
+
+  drawFields();
+  runTool();
+}
 
 /* =========================================================================
  * СПРАВОЧНИК
@@ -890,6 +1053,9 @@ $('#formula-search').addEventListener('input', (e) => {
 /* =========================================================================
  * СТАРТ
  * ========================================================================= */
+initInfo();
+initGeo();
 show(settings.screen || 'calc');
+applySubjectMode(settings.subject || 'school', { navigate: false });
 updateDisplay();
 void preprocess;

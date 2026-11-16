@@ -30,6 +30,8 @@
     <button type="button" class="tab" data-go="task">Задачи</button>
     <button type="button" class="tab" data-go="interval">Прямая</button>
     <button type="button" class="tab" data-go="graph">Графики</button>
+    <button type="button" class="tab" data-go="info">Информатика</button>
+    <button type="button" class="tab" data-go="geo">Геометрия</button>
   </nav>
 
   <main>
@@ -159,6 +161,95 @@ A ∪ B">A ∩ B, A ∪ B</button>
         <div class="graph-readout" id="graph-readout">Введите функцию и нажмите «Построить». Перетаскивайте поле для сдвига, касайтесь для координат.</div>
         <div class="graph-table" id="graph-table"></div>
         <p class="hint hint-note">Поддерживаются выражения (sin(x), sqrt(x)), кусочные записи «кусочно: x &lt; 0: -x; x &gt;= 0: x», несколько графиков, уравнения ax + by = c, полуплоскости y &lt; kx + b, точки x,y и линия через точки. Масштаб: кнопками или колёсиком; сдвиг — перетаскиванием.</p>
+      </div>
+    </section>
+
+
+    <!-- ========================== ИНФОРМАТИКА ============================= -->
+    <section class="screen" id="screen-info">
+      <div class="panel">
+        <div class="field-label">Калькулятор единиц информации</div>
+        <div class="calc-row">
+          <input class="input" type="text" id="info-size" value="1,5" inputmode="decimal" autocomplete="off" aria-label="Размер">
+          <select class="input" id="info-unit" aria-label="Единица"></select>
+        </div>
+        <div class="calc-row">
+          <label class="mini-label" for="info-binary"><input type="checkbox" id="info-binary" checked> 1 КБ = 1024 Б</label>
+        </div>
+        <button class="btn primary wide" id="info-convert">Перевести</button>
+        <div class="out" id="info-out"></div>
+      </div>
+
+      <div class="panel" style="margin-top:10px">
+        <div class="field-label">Системы счисления</div>
+        <div class="calc-row">
+          <input class="input" type="text" id="base-value" value="1011" autocomplete="off" aria-label="Число">
+          <select class="input" id="base-from" aria-label="Из системы"></select>
+          <select class="input" id="base-to" aria-label="В систему"></select>
+        </div>
+        <button class="btn primary wide" id="base-convert">Перевести число</button>
+        <div class="out" id="base-out"></div>
+      </div>
+
+      <div class="panel" style="margin-top:10px">
+        <div class="field-label">Задача по информатике (с «Дано»)</div>
+        <textarea id="info-task" rows="3" placeholder="Например: сколько бит нужно для кодирования 32 цветов?" spellcheck="false"></textarea>
+        <div class="chips">
+          <button type="button" data-info="Переведите 2 ГБ в МБ">2 ГБ → МБ</button>
+          <button type="button" data-info="Сколько бит нужно для кодирования 32 цветов?">N = 2^i</button>
+          <button type="button" data-info="Сообщение из 100 символов, каждый символ 8 бит. Найдите объём.">I = K·i</button>
+          <button type="button" data-info="Файл 4 МБ скачивается со скоростью 512 КБ/с. Сколько секунд?">t = I/V</button>
+        </div>
+        <button class="btn primary wide" id="info-solve">Решить</button>
+        <div class="out" id="info-task-out"></div>
+      </div>
+
+      <div class="panel" style="margin-top:10px">
+        <div class="field-label">Формулы</div>
+        <ol class="steps">
+          <li>1 байт = 8 бит; 1 КБ = 1024 Б; 1 МБ = 1024 КБ; 1 ГБ = 1024 МБ; 1 ТБ = 1024 ГБ</li>
+          <li>N = 2^i — сколько вариантов кодируют i бит; i = log₂N</li>
+          <li>N = K^i — мощность алфавита K и вес символа i</li>
+          <li>I = K · i — объём сообщения (символы × бит на символ)</li>
+          <li>t = I / V — время передачи при скорости V</li>
+        </ol>
+      </div>
+    </section>
+
+    <!-- =========================== ГЕОМЕТРИЯ ============================== -->
+    <section class="screen" id="screen-geo">
+      <div class="panel">
+        <div class="field-label">Быстрый калькулятор</div>
+        <select class="input" id="geo-tool"></select>
+        <div class="fields" id="geo-fields"></div>
+        <button class="btn primary wide" id="geo-calc">Посчитать</button>
+        <div class="out" id="geo-out"></div>
+      </div>
+
+      <div class="panel" style="margin-top:10px">
+        <div class="field-label">Задача по геометрии (с «Дано»)</div>
+        <textarea id="geo-task" rows="3" placeholder="Например: найдите площадь треугольника с основанием 8 см и высотой 5 см" spellcheck="false"></textarea>
+        <div class="chips">
+          <button type="button" data-geo="Найдите гипотенузу прямоугольного треугольника с катетами 3 и 4">Пифагор</button>
+          <button type="button" data-geo="Найдите площадь круга радиуса 5">Круг</button>
+          <button type="button" data-geo="Смежные углы: один 40 градусов, найдите второй">Смежные углы</button>
+          <button type="button" data-geo="Стороны треугольника 5, 6, 7. Найдите площадь по формуле Герона">Герон</button>
+        </div>
+        <button class="btn primary wide" id="geo-solve">Решить</button>
+        <div class="out" id="geo-task-out"></div>
+      </div>
+
+      <div class="panel" style="margin-top:10px">
+        <div class="field-label">Формулы 7—9 класса (Атанасян)</div>
+        <ol class="steps">
+          <li>Сумма углов треугольника: ∠A + ∠B + ∠C = 180°; смежные углы: 180°</li>
+          <li>Пифагор: c² = a² + b²; sin A = a/c; cos A = b/c</li>
+          <li>S△ = ½ah; S△ = √(p(p−a)(p−b)(p−c)) — Герон</li>
+          <li>Окружность: C = 2πr; S = πr²; дуга и сектор: α/360</li>
+          <li>Теоремы синусов a/sin A = 2R и косинусов a² = b² + c² − 2bc·cos A</li>
+          <li>Площади: S▱ = ah; Sтрап = ½(a+b)h; Sромба = ½d₁d₂</li>
+          <li>Объёмы: V = abc; Vцил = πr²h; Vкон = πr²h/3; Vшара = 4/3πr³</li>
+        </ol>
       </div>
     </section>
 

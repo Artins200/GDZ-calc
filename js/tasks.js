@@ -13,7 +13,9 @@ import { FORMULAS, FORMULA_BY_ID, formulaSearch } from './formulas.js';
 import { predictFamily } from './dispatcher.js';
 import { FAMILY_BY_RULE } from './families.js';
 import { parseInterval, describeInterval, numberLineSVG, intersect, union } from './intervals.js';
-import { solveTopicTask } from './topic-solvers.js';
+import { solveTopicTask, solveMultiDayQuantity } from './topic-solvers.js';
+import { solveItTask } from './it.js';
+import { solveGeoTask } from './geo.js';
 
 /* ------------------------------------------------------------------ примеры */
 export const TASK_EXAMPLES = [
@@ -2678,10 +2680,89 @@ function verifyByFormula(formulaIds, inputs, answer) {
   return null;
 }
 
+/** Карточка «Дано — Найти — Решение — Ответ» → решение приложения. */
+export function cardToSolution(card, mode = '') {
+  const steps = [
+    ...(card.given || []).length ? [`Дано: ${card.given.map((g) => `${g.label} = ${g.value}`).join('; ')}.`] : [],
+    ...(card.find || []).length ? [`Найти: ${card.find.map((f) => (typeof f === 'string' ? f : `${f.label} — ?`)).join('; ')}.`] : [],
+    ...(card.formulas || []).length ? [`Формулы: ${card.formulas.join('; ')}.`] : [],
+    ...(card.solution || card.steps || []).map((t) => String(t)),
+    ...(card.answer ? [`Ответ: ${card.answer}.`] : []),
+  ];
+  return {
+    ok: true,
+    answer: card.answer || '',
+    steps: cardToActions(steps),
+    rawSteps: steps,
+    checks: [],
+    variants: [],
+    notes: card.notes || [],
+    inputs: card.inputs || {},
+    related: [],
+    formulaIds: [],
+    card,
+    mode,
+    topic: card.title,
+    confidence: 98,
+  };
+}
+
+/** Нумерует шаги, не добавляя номер к строкам «Дано/Найти/Формулы/Ответ». */
+function cardToActions(steps) {
+  return steps.map((t, i) => {
+    if (/^(Дано|Найти|Формулы|Ответ):/.test(t)) return `${i + 1}) ${t}`;
+    if (/^\d+\)/.test(t)) return t;
+    return `${i + 1}) ${t}`;
+  });
+}
+
+const DAY_MARK_ALL = /(?:перв|втор|трет|четверт|пят)[а-яё]*\s*(?:день|дня|дне)|\d+\s*(?:-?й\s*)?(?:день|дня|дне)/i;
+
+/** Есть ли в задаче цепочка «первый день … второй день … третий день». */
+function hasDayChain(raw) {
+  const s = String(raw || '');
+  const marks = s.match(new RegExp(DAY_MARK_ALL.source, 'gi')) || [];
+  return marks.length >= 2;
+}
+
+/** Честный отказ вместо ложного ответа, когда шаблон не подходит. */
+function noReliableAnswer(raw) {
+  return {
+    ok: false,
+    text: raw,
+    answer: 'Нужен другой способ решения',
+    steps: [
+      'В задаче несколько дней/этапов, и я не смог уверенно восстановить, от какого значения считается каждое изменение.',
+      'Напишите по шагам: «в первый день — 30, во второй — на 5 больше, в третий — в 2 раза меньше».',
+      'Слова «больше/меньше» и «в … раз» определяют действие: прибавить, вычесть, умножить или разделить.',
+    ],
+    notes: ['Лучше признать неясность, чем показать неверный ответ: парсер не угадывает, а проверяет структуру условия.'],
+    checks: [], variants: [], related: [], inputs: {}, formulaIds: [], candidates: [],
+  };
+}
+
 export function solveTask(raw, options = {}) {
+  // Режим приложения: «informatics» / «geometry» — сначала профильный решатель.
+  if (options.mode === 'informatics') {
+    const card = solveItTask(raw);
+    if (card) return cardToSolution(card, 'informatics');
+  }
+  if (options.mode === 'geometry') {
+    const card = solveGeoTask(raw);
+    if (card) {
+      if (card.error) return { ok: false, answer: card.error, steps: [], notes: [card.error] };
+      return cardToSolution(card, 'geometry');
+    }
+  }
+  const multiDay = solveMultiDayQuantity(raw);
+  if (multiDay) return { ...multiDay, confidence: 99, rawSteps: multiDay.steps, steps: toActions(multiDay.steps), checks: multiDay.checks || [], variants: [], notes: multiDay.notes || [], inputs: {}, related: [], formulaIds: [] };
   const topic = solveTopicTask(raw);
   if (topic) return { ...topic, confidence: 95, steps: toActions(topic.steps), rawSteps: topic.steps, checks: topic.checks || [], variants: [], notes: topic.notes || [], inputs: topic.inputs || {}, related: [], formulaIds: [] };
   const ctx = makeContext(raw);
+  // Не отдаём многошаговую задачу простому шаблону «часть и часть».
+  if (hasDayChain(raw) && !ctx.qHas(/част|долю|каждую часть/)) {
+    return noReliableAnswer(raw);
+  }
   const attempts = [];
   for (const rule of RULES) {
     try {

@@ -9,6 +9,8 @@ import { parseInterval, intersect, union, numberLineSVG, describeInterval } from
 import { solveTask, TASK_EXAMPLES, RULE_COUNT, recomputeWith, sanityCheck } from '../js/tasks.js';
 import { solveInequality, longArithmetic, divideAngle } from '../js/inequalities.js';
 import { classifyTask } from '../js/classifier.js';
+import { convertInfoSize, convertBase, solveItTask, parseInfoSize, powerOfTwo } from '../js/it.js';
+import { solveGeoTask, triangleArea, rightTriangle, triangleHeron, adjacentAngles } from '../js/geo.js';
 
 let passed = 0;
 const ok = (name, fn) => {
@@ -524,6 +526,43 @@ ok('двухэтапная арифметика различает сложен�
   assert.equal(solveTask('В каждой коробке по 6 карандашей. Таких коробок 4. Сколько всего?').answer, '24');
   assert.equal(solveTask('24 конфеты разделили поровну между 6 детьми. Сколько каждому?').answer, '4');
   assert.equal(solveTask('Было 17 карандашей, 5 продали. Сколько осталось?').answer, '12');
+});
+ok('цепочка дней: каждое значение считается от предыдущего', () => {
+  const q = 'На сво отдали 30 детей в первый день, во второй день отдали в 3 раза больше, а в 3 дне стало на 2 раза меньше, сколько детей осталось?';
+  assert.equal(solveTask(q).answer, '45 детей');
+  assert.equal(solveTask('В первый день было 40 яблок, во второй день стало на 5 больше. Сколько яблок стало?').answer, '45 яблок');
+  assert.equal(solveTask('В первый день турист прошёл 18 км, во второй день — в 2 раза меньше, а в третий — на 5 км больше, чем во второй. Сколько километров прошёл турист за три дня?').answer, '41 км');
+  assert.equal(solveTask('В первый день на складе было 120 ящиков, во второй день увезли 40 ящиков, а в третий день привезли 15 ящиков. Сколько ящиков стало?').answer, '95 ящиков');
+});
+ok('информатика: единицы, N = K^i, I = K·i, время, системы счисления', () => {
+  near(convertInfoSize(2, 'GB').find((x) => x.unit === 'МБ').value, 2048);
+  near(convertInfoSize(2048, 'bit').find((x) => x.unit === 'Б' || x.unit === 'байт').value, 256);
+  assert.equal(powerOfTwo(32).i, 5);
+  assert.equal(convertBase('1011', 2, 10).result, '11');
+  assert.equal(convertBase('45', 10, 2).result, '101101');
+  assert.equal(solveItTask('Сколько бит нужно для кодирования 32 цветов?').answer, '5 бит');
+  assert.equal(solveItTask('Файл 4 МБ скачивается со скоростью 512 КБ/с. Сколько секунд?').answer, '8 с');
+  assert.match(solveItTask('Переведите 2 ГБ в МБ').answer, /2048 МБ/);
+  const card = solveItTask('Сколько бит нужно для кодирования 32 цветов?');
+  assert.ok(card.given.length && card.find.length && card.steps.length);
+});
+ok('геометрия: площади, Пифагор, Герон, углы', () => {
+  assert.match(triangleArea(8, 5).answer, /20 см²/);
+  assert.match(rightTriangle(3, 4).answer, /c = 5 см/);
+  assert.match(triangleHeron(5, 6, 7).answer, /14,6969 см²/);
+  assert.match(adjacentAngles(40).answer, /140°/);
+  assert.match(solveGeoTask('Найдите площадь круга радиуса 5').answer, /78,5398 см²/);
+  assert.match(solveGeoTask('В треугольнике два угла 50 и 60. Найдите третий').answer, /70°/);
+  const bad = solveGeoTask('Треугольник со сторонами 1, 2, 10. Найдите периметр');
+  assert.ok(bad.error);
+});
+ok('режимы информатики и геометрии подключаются к решателю задач', () => {
+  const it = solveTask('Сколько бит нужно для кодирования 32 цветов?', { mode: 'informatics' });
+  assert.equal(it.answer, '5 бит');
+  assert.ok(it.steps[0].startsWith('1) Дано:'));
+  const geo = solveTask('Найдите площадь треугольника с основанием 8 и высотой 5', { mode: 'geometry' });
+  assert.match(geo.answer, /20 см²/);
+  assert.ok(geo.steps.some((s) => s.includes('Ответ:')));
 });
 ok('дополнительные алгоритмы: Пифагор, прогрессия, сочетания, вероятность, производная', () => {
   assert.equal(solveTask('В прямоугольном треугольнике катеты 3 и 4. Найдите гипотенузу.').answer, '5');
