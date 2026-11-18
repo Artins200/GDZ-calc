@@ -1,0 +1,910 @@
+<!DOCTYPE html>
+<!--
+  Смета — открытый код (MIT). Часть GDZ-calc: https://github.com/Artins200/GDZ-calc
+  Самодостаточный файл: таблицы с формулами, итогами и вопросами словами.
+  Можно открыть двойным кликом (file://), можно встроить в приложение через iframe.
+  Никаких внешних запросов, зависимостей и библиотек — всё внутри.
+-->
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="description" content="Смета: таблица с числами и формулами, итоги, и вопросы словами («сколько сделали в первый день?»). Открытый код, работает офлайн.">
+<title>Смета — таблица с вопросами словами</title>
+<style>
+:root {
+  --bg: #0e1013; --bg-2: #14171b; --surface: #171a1e; --surface-2: #1c2025;
+  --line: #262b31; --line-soft: #21262b;
+  --ink: #eef1f5; --ink-2: #a8b1bd; --ink-3: #6f7885;
+  --accent: #ff9f0a; --accent-ink: #1a1204; --accent-soft: #2a2113;
+  --blue: #4b9bff; --blue-soft: #17212e; --ok: #37d399; --ok-soft: #12261f;
+  --err: #ff7a72; --radius: 16px;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+}
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body {
+  background: var(--bg); color: var(--ink);
+  font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  min-height: 100vh; padding: 14px 12px 40px;
+}
+.wrap { max-width: 900px; margin: 0 auto; }
+header.top {
+  display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  padding: 6px 4px 14px; border-bottom: 1px solid var(--line-soft); margin-bottom: 14px;
+}
+.wordmark { font-size: 1.35rem; font-weight: 800; letter-spacing: .2px; }
+.wordmark b { color: var(--accent); }
+.tagline { color: var(--ink-3); font-size: .78rem; margin-top: 1px; }
+.badge {
+  font: 11px/1.4 system-ui; color: var(--ink-2); border: 1px solid var(--line);
+  border-radius: 999px; padding: 5px 11px; white-space: nowrap; text-decoration: none;
+}
+.badge:hover { border-color: var(--accent); color: var(--accent); }
+
+.panel { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; }
+.panel + .panel { margin-top: 10px; }
+.field-label { font-size: .78rem; font-weight: 700; color: var(--ink-2); text-transform: uppercase; letter-spacing: .06em; margin-bottom: 8px; }
+.row { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+.row + .row { margin-top: 8px; }
+.input {
+  flex: 1 1 140px; min-width: 0; background: var(--bg-2); border: 1px solid var(--line);
+  color: var(--ink); border-radius: 10px; padding: 9px 11px; font-size: .95rem; outline: none;
+}
+.input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(255,159,10,.16); }
+.input.mono { font-family: var(--mono); }
+.btn {
+  background: var(--surface-2); color: var(--ink); border: 1px solid var(--line);
+  border-radius: 10px; padding: 9px 13px; font-size: .9rem; cursor: pointer; font-weight: 600;
+}
+.btn:hover { border-color: var(--accent); color: var(--accent); }
+.btn.primary { background: var(--accent); border-color: var(--accent); color: var(--accent-ink); }
+.btn.primary:hover { filter: brightness(1.05); color: var(--accent-ink); }
+.btn.small { padding: 6px 10px; font-size: .8rem; }
+.btn.ghost { background: transparent; }
+.hint { color: var(--ink-3); font-size: .8rem; margin-top: 8px; }
+.err { color: var(--err); font-size: .85rem; margin-top: 8px; }
+.ok-note { color: var(--ok); font-size: .8rem; }
+
+/* переменные */
+.vars { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 8px; }
+.var-chip {
+  display: inline-flex; align-items: center; gap: 6px; background: var(--surface-2);
+  border: 1px solid var(--line); border-radius: 999px; padding: 5px 11px; font-size: .85rem;
+}
+.var-chip b { color: var(--accent); font-family: var(--mono); font-weight: 600; }
+.var-chip span { color: var(--ink-2); font-family: var(--mono); }
+.var-chip button { background: none; border: none; color: var(--ink-3); cursor: pointer; font-size: 1rem; line-height: 1; padding: 0 2px; }
+.var-chip button:hover { color: var(--err); }
+
+/* таблица */
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--bg-2); }
+table.smeta { border-collapse: collapse; width: 100%; min-width: 520px; font-size: .9rem; }
+table.smeta th, table.smeta td { border: 1px solid var(--line-soft); padding: 4px 6px; }
+table.smeta thead th { background: var(--surface-2); vertical-align: top; }
+.corner { color: var(--ink-3); font-size: .72rem; text-align: left; padding: 8px 10px; }
+.col-title-input, .col-unit-input, .row-label-input, .cell-input {
+  background: transparent; border: none; outline: none; color: var(--ink);
+  font: inherit; width: 100%; text-align: center; padding: 4px 2px;
+}
+.col-title-input { font-weight: 700; }
+.col-unit-input { color: var(--ink-3); font-size: .75rem; margin-top: 2px; }
+.row-label-input { text-align: left; font-weight: 600; min-width: 90px; }
+.cell-input { font-family: var(--mono); font-size: .9rem; }
+.cell-val { display: block; text-align: center; font-family: var(--mono); font-size: .72rem; color: var(--ink-2); min-height: .9em; padding: 0 2px 2px; }
+.cell-val.err { color: var(--err); }
+table.smeta tfoot th { color: var(--ink-2); text-align: left; font-size: .78rem; padding: 6px 10px; }
+td.total, table.smeta tfoot td { text-align: center; font-family: var(--mono); font-weight: 700; color: #ffd9a0; padding: 6px; }
+.flash { animation: flash 1.6s ease; }
+@keyframes flash { 0% { background: rgba(255,159,10,.38); } 100% { background: transparent; } }
+.tools { display: flex; gap: 7px; flex-wrap: wrap; margin-top: 10px; align-items: center; }
+.mini-label { display: flex; align-items: center; gap: 6px; font-size: .82rem; color: var(--ink-2); user-select: none; }
+.mini-label input { accent-color: var(--accent); width: 15px; height: 15px; }
+
+/* график */
+.chart-head { display: flex; justify-content: space-between; align-items: center; gap: 10px; margin-bottom: 8px; }
+.chart-head .field-label { margin: 0; }
+.mini-select { flex: 0 0 auto; max-width: 46%; background: var(--bg-2); color: var(--ink); border: 1px solid var(--line); border-radius: 9px; padding: 7px 9px; font-size: .85rem; }
+canvas.chart { display: block; width: 100%; height: 170px; background: #121519; border: 1px solid var(--line); border-radius: 12px; }
+
+/* вопрос словами */
+.qa-hint { color: var(--ink-3); font-size: .8rem; margin: 4px 0 8px; }
+.qa-row { display: flex; gap: 8px; }
+.qa-answer {
+  margin-top: 10px; background: var(--ok-soft); border: 1px solid #1f3d31; border-radius: 12px;
+  padding: 10px 12px; font-size: .95rem; display: none;
+}
+.qa-answer b { color: var(--ok); }
+.qa-answer .qa-src { color: var(--ink-2); font-size: .82rem; margin-top: 4px; }
+.qa-error { margin-top: 10px; background: #2a1a18; border: 1px solid #452723; border-radius: 12px; padding: 10px 12px; font-size: .88rem; color: #ffc4bd; display: none; }
+.qa-history { margin-top: 10px; }
+.qa-item { border-top: 1px dashed var(--line); padding: 7px 2px; font-size: .85rem; }
+.qa-item:first-child { border-top: none; }
+.qa-q { color: var(--ink-2); }
+.qa-a { color: var(--ink); font-family: var(--mono); font-size: .82rem; margin-top: 2px; }
+
+/* стрелки зависимостей */
+.diagram { background: var(--bg-2); border: 1px solid var(--line); border-radius: 12px; overflow: hidden; }
+.diagram svg { display: block; width: 100%; height: auto; }
+.rel-form { display: flex; gap: 7px; margin-top: 8px; flex-wrap: wrap; }
+.rel-form select { flex: 1 1 120px; background: var(--bg-2); color: var(--ink); border: 1px solid var(--line); border-radius: 9px; padding: 8px 9px; font-size: .9rem; }
+.rel-chip {
+  display: inline-flex; align-items: center; gap: 7px; background: var(--surface-2);
+  border: 1px solid var(--line); border-radius: 999px; padding: 4px 11px; font-size: .82rem; margin: 6px 6px 0 0;
+}
+.rel-chip b { color: var(--accent); }
+.rel-chip button { background: none; border: none; color: var(--ink-3); cursor: pointer; font-size: .95rem; }
+.rel-chip button:hover { color: var(--err); }
+.preset-row { display: flex; gap: 7px; flex-wrap: wrap; }
+footer.note { text-align: center; color: var(--ink-3); font-size: .75rem; margin-top: 18px; }
+@media (max-width: 560px) {
+  .panel { padding: 11px; }
+  .corner { display: none; }
+  .col-title-input { min-width: 84px; }
+}
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="top">
+    <div>
+      <div class="wordmark"><b>С</b>мета</div>
+      <div class="tagline">таблица с формулами и вопросы словами · офлайн · открытый код</div>
+    </div>
+    <a class="badge" href="https://github.com/Artins200/GDZ-calc" rel="noopener" target="_blank">MIT · GitHub</a>
+  </header>
+
+  <!-- Что решаем -->
+  <section class="panel">
+    <div class="field-label">Что решаем</div>
+    <input class="input" id="title" type="text" placeholder="Например: «Отчёт за первую неделю» или «Смета покупки»" autocomplete="off" spellcheck="false">
+    <div class="row" style="margin-top:8px">
+      <div class="preset-row">
+        <button class="btn small" id="preset-days">Пример: отчёт по дням</button>
+        <button class="btn small" id="preset-smeta">Пример: смета покупки</button>
+        <button class="btn small ghost" id="clear-all">Очистить</button>
+      </div>
+    </div>
+  </section>
+
+  <!-- Переменные -->
+  <section class="panel">
+    <div class="field-label">Переменные — можно сколько угодно</div>
+    <div class="vars" id="vars"></div>
+    <form class="row" id="add-var-form" autocomplete="off">
+      <input class="input mono" id="var-name" placeholder="имя (например, норма)" spellcheck="false" style="flex:0 1 150px">
+      <input class="input mono" id="var-expr" placeholder="значение или выражение (2 * 50)" spellcheck="false">
+      <button class="btn" type="submit">+ Переменная</button>
+    </form>
+    <p class="hint">Переменные работают везде: в ячейках таблицы и в вопросе. Имя — буквами и цифрами, с буквы: <code>цена</code>, <code>наличные</code>.</p>
+  </section>
+
+  <!-- Таблица -->
+  <section class="panel">
+    <div class="field-label">Таблица</div>
+    <div class="table-wrap" id="table-wrap"></div>
+    <div class="tools">
+      <button class="btn small" id="add-col">+ Столбец</button>
+      <button class="btn small" id="del-col">− Столбец</button>
+      <button class="btn small" id="add-row">+ Строка</button>
+      <button class="btn small" id="del-row">− Строка</button>
+      <label class="mini-label"><input type="checkbox" id="sum-col" checked> «Всего» по строкам</label>
+      <label class="mini-label"><input type="checkbox" id="sum-row" checked> «Итого» по столбцам</label>
+    </div>
+    <p class="hint">В ячейке — число или выражение (<code>2 * цена</code>, <code>норма * 3</code>). Выражение видит переменные и левые столбцы своей строки.</p>
+    <div class="err" id="errors" hidden></div>
+  </section>
+
+  <!-- Вопрос словами -->
+  <section class="panel">
+    <div class="field-label">Спросить таблицу словами</div>
+    <p class="qa-hint">Например: <i>«сколько сделали в первый день?»</i>, <i>«какая численность?»</i>, <i>«сколько всего сделали?»</i>, <i>«в каком дне больше всего сделали?»</i>, <i>«какое среднее по столбцу сделали?»</i></p>
+    <form class="qa-row" id="qa-form" autocomplete="off">
+      <input class="input" id="qa-input" placeholder="Спросите про таблицу…" spellcheck="false" aria-label="Вопрос по таблице">
+      <button class="btn primary" type="submit">Спросить</button>
+    </form>
+    <div class="qa-answer" id="qa-answer" role="status"></div>
+    <div class="qa-error" id="qa-error" role="alert"></div>
+    <div class="qa-history" id="qa-history"></div>
+  </section>
+
+  <!-- График -->
+  <section class="panel">
+    <div class="chart-head">
+      <div class="field-label">График по таблице</div>
+      <select class="mini-select" id="chart-col" aria-label="Столбец для графика"></select>
+    </div>
+    <canvas class="chart" id="chart-canvas" role="img" aria-label="Столбчатая диаграмма по значениям столбца"></canvas>
+  </section>
+
+  <!-- Стрелки: что от чего зависит -->
+  <section class="panel">
+    <div class="field-label">Стрелки — что от чего зависит</div>
+    <div class="diagram" id="diagram"></div>
+    <form class="rel-form" id="rel-form" autocomplete="off">
+      <select id="rel-from" aria-label="Откуда"></select>
+      <select id="rel-op" aria-label="Операция">
+        <option value="times">× (умножение)</option>
+        <option value="plus">+ (сложение)</option>
+        <option value="minus">− (вычитание)</option>
+        <option value="div">÷ (деление)</option>
+        <option value="pct">% (проценты)</option>
+        <option value="dep">→ (просто зависит)</option>
+      </select>
+      <select id="rel-to" aria-label="Куда"></select>
+      <button class="btn" type="submit">+ Стрелка</button>
+    </form>
+    <div id="relations"></div>
+  </section>
+
+  <footer class="note">Смета — открытый код (MIT), часть GDZ-calc · Считается локально, ничего никуда не отправляет</footer>
+</div>
+
+<script>
+'use strict';
+/* =========================================================
+ * Смета — ядро (всё в одном файле, без зависимостей)
+ * ========================================================= */
+const STORE = 'gdzcalc.smeta.v1';
+const $ = (s, r) => (r || document).querySelector(s);
+const $$ = (s, r) => Array.from((r || document).querySelectorAll(s));
+const esc = (s) => String(s ?? '').replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;');
+const norm = (s) => String(s ?? '').replace(/ё/g, 'е').replace(/Ё/g, 'е').trim().toLowerCase();
+const fmt = (n) => {
+  if (!Number.isFinite(n)) return '—';
+  return n.toLocaleString('ru-RU', { maximumFractionDigits: 2 });
+};
+const uid = () => 'id' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+
+/* ---------- вычисление выражений ---------- */
+const FUNCS = new Set(['sqrt', 'abs', 'min', 'max', 'round', 'floor', 'ceil']);
+function evaluateExpr(src, scope) {
+  let expr = String(src ?? '').trim();
+  if (!expr) return NaN;
+  expr = expr.replace(/×/g, '*').replace(/÷/g, '/').replace(/,/g, '.').replace(/−/g, '-');
+  // проценты: «число%» → (число/100)
+  expr = expr.replace(/(\d+(?:\.\d+)?)\s*%/g, '($1/100)');
+  expr = expr.replace(/\^/g, '**');
+  const escapeReg = (s) => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  const words = expr.match(/[A-Za-zА-Яа-я_][\wА-Яа-я_]*/g) || [];
+  for (const w of words) {
+    if (FUNCS.has(w)) continue;
+    if (Object.prototype.hasOwnProperty.call(scope, w)) {
+      const v = Number(scope[w]);
+      const re = new RegExp(`(^|[^\\p{L}\\p{N}_])(${escapeReg(w)})(?![\\p{L}\\p{N}_])`, 'giu');
+      expr = expr.replace(re, (_, pre) => `${pre}(${Number.isFinite(v) ? v : 0})`);
+    } else {
+      throw new Error(`неизвестное имя «${w}»`);
+    }
+  }
+  expr = expr.replace(/\b(sqrt|abs|min|max|round|floor|ceil)\s*\(/g, 'Math.$1(');
+  if (!/^[\d+\-*/(). ]*$|^(?:[\d+\-*/(). ]|\*\*|Math\.(sqrt|abs|min|max|round|floor|ceil)\()*$/.test(expr) && /[^\d+\-*/().\sMahtsqrfloeabci]/.test(expr.replace(/Math\.(sqrt|abs|min|max|round|floor|ceil)\(/g, ''))) {
+    // дополнительная защита: после подстановки не должно остаться букв, кроме Math.*
+    const stripped = expr.replace(/Math\.(sqrt|abs|min|max|round|floor|ceil)\(/g, '');
+    if (/[A-Za-zА-Яа-я_]/.test(stripped)) throw new Error('в выражении есть лишние символы');
+  }
+  try {
+    const value = Function('"use strict"; return (' + expr + ')')();
+    return Number(value);
+  } catch {
+    throw new Error('не удалось посчитать выражение');
+  }
+}
+
+function evaluateCells(model) {
+  const errors = [];
+  const scope = {};
+  for (const v of model.vars) {
+    const name = String(v.name || '').trim();
+    if (!name) continue;
+    try {
+      const val = evaluateExpr(v.expr, scope);
+      if (!Number.isFinite(val)) { errors.push(`Переменная «${name}» не вычислилась.`); scope[name] = NaN; }
+      else scope[name] = val;
+    } catch (e) { errors.push(`Переменная «${name}»: ${e.message}`); scope[name] = NaN; }
+  }
+  const colIdents = model.columns.map((c) => {
+    const t = String(c.title || '').trim();
+    return /^[A-Za-zА-Яа-я_][\wА-Яа-я_]*$/.test(t) ? t : null;
+  });
+  const grid = model.rows.map((row) => {
+    const rowScope = Object.assign({}, scope);
+    return model.columns.map((col, ci) => {
+      const raw = String(model.cells[`${row.id}|${col.id}`] ?? '');
+      if (!raw.trim()) return { raw, value: NaN, empty: true };
+      try {
+        const value = evaluateExpr(raw, rowScope);
+        if (!Number.isFinite(value)) return { raw, value: NaN, error: 'не число' };
+        const idn = colIdents[ci];
+        if (idn) rowScope[idn] = value;
+        return { raw, value };
+      } catch (e) {
+        return { raw, value: NaN, error: e.message };
+      }
+    });
+  });
+  const rowTotals = grid.map((r) => r.reduce((a, c) => a + (Number.isFinite(c.value) ? c.value : 0), 0));
+  const colTotals = model.columns.map((_, ci) => grid.reduce((a, r) => a + (Number.isFinite(r[ci].value) ? r[ci].value : 0), 0));
+  return { scope, grid, rowTotals, colTotals, errors };
+}
+
+/* ---------- модель ---------- */
+function defaultDays() {
+  return {
+    title: 'Отчёт за неделю',
+    vars: [],
+    columns: [
+      { id: 'c1', title: 'сделали', unit: 'шт' },
+      { id: 'c2', title: 'численность', unit: 'чел' },
+      { id: 'c3', title: 'брак', unit: 'шт' },
+    ],
+    rows: [
+      { id: 'r1', label: 'Первый день' },
+      { id: 'r2', label: 'Второй день' },
+      { id: 'r3', label: 'Третий день' },
+    ],
+    cells: {
+      'r1|c1': '120', 'r1|c2': '8', 'r1|c3': '3',
+      'r2|c1': '135', 'r2|c2': '8', 'r2|c3': '2',
+      'r3|c1': '128', 'r3|c2': '7', 'r3|c3': '5',
+    },
+    showSumCol: true,
+    showSumRow: true,
+    relations: [
+      { id: 'rel1', fromKind: 'col', from: 'c1', toKind: 'col', to: 'c3', op: 'dep' },
+    ],
+  };
+}
+function presetSmeta() {
+  return {
+    title: 'Смета покупки',
+    vars: [{ name: 'наличные', expr: '1000' }],
+    columns: [
+      { id: 'c1', title: 'колво', unit: 'шт' },
+      { id: 'c2', title: 'цена', unit: '₽' },
+      { id: 'c3', title: 'стоимость', unit: '₽' },
+    ],
+    rows: [
+      { id: 'r1', label: 'Тетради' },
+      { id: 'r2', label: 'Ручки' },
+      { id: 'r3', label: 'Книга' },
+    ],
+    cells: {
+      'r1|c1': '2', 'r1|c2': '15', 'r1|c3': 'колво * цена',
+      'r2|c1': '3', 'r2|c2': '7',  'r2|c3': 'колво * цена',
+      'r3|c1': '1', 'r3|c2': '240','r3|c3': 'колво * цена',
+    },
+    showSumCol: true,
+    showSumRow: true,
+    relations: [
+      { id: 'rel1', fromKind: 'col', from: 'c1', toKind: 'col', to: 'c3', op: 'times' },
+      { id: 'rel2', fromKind: 'col', from: 'c2', toKind: 'col', to: 'c3', op: 'times' },
+    ],
+  };
+}
+function emptyModel() {
+  return {
+    title: '',
+    vars: [],
+    columns: [
+      { id: 'c1', title: 'Столбец 1', unit: '' },
+      { id: 'c2', title: 'Столбец 2', unit: '' },
+    ],
+    rows: [{ id: 'r1', label: 'Строка 1' }],
+    cells: {},
+    showSumCol: true,
+    showSumRow: true,
+    relations: [],
+  };
+}
+function load() {
+  try {
+    const raw = localStorage.getItem(STORE);
+    if (!raw) return defaultDays();
+    const p = JSON.parse(raw);
+    const base = emptyModel();
+    return {
+      ...base, ...p,
+      vars: Array.isArray(p.vars) ? p.vars : [],
+      columns: Array.isArray(p.columns) && p.columns.length ? p.columns : base.columns,
+      rows: Array.isArray(p.rows) && p.rows.length ? p.rows : base.rows,
+      cells: p.cells && typeof p.cells === 'object' ? p.cells : {},
+      relations: Array.isArray(p.relations) ? p.relations : [],
+    };
+  } catch { return defaultDays(); }
+}
+function save() { try { localStorage.setItem(STORE, JSON.stringify(model)); } catch {} }
+
+let model = load();
+let lastEval = evaluateCells(model);
+
+/* ---------- рендер таблицы ---------- */
+function renderAll() {
+  lastEval = evaluateCells(model);
+  $('#title').value = model.title || '';
+  renderVars();
+  renderTable();
+  renderChart();
+  renderRelations();
+}
+function renderVars() {
+  const box = $('#vars');
+  box.innerHTML = model.vars.map((v, i) => {
+    const val = lastEval.scope[v.name];
+    return `<span class="var-chip"><b>${esc(v.name)}</b><span>= ${Number.isFinite(val) ? fmt(val) : '?'}</span><span>= ${esc(v.expr)}</span><button type="button" data-del-var="${i}" aria-label="Удалить переменную">×</button></span>`;
+  }).join('') || '<span class="hint" style="margin:0">Переменных пока нет</span>';
+}
+function renderTable() {
+  const ev = lastEval;
+  let html = '<table class="smeta"><thead><tr><th class="corner">строка ↓ / столбец →</th>';
+  model.columns.forEach((c, ci) => {
+    html += `<th><input class="col-title-input" data-col-title="${ci}" value="${esc(c.title)}" placeholder="Столбец ${ci + 1}" autocomplete="off" spellcheck="false"><input class="col-unit-input" data-col-unit="${ci}" value="${esc(c.unit || '')}" placeholder="ед." autocomplete="off" spellcheck="false"></th>`;
+  });
+  if (model.showSumCol) html += '<th>Всего</th>';
+  html += '</tr></thead><tbody>';
+  model.rows.forEach((row, ri) => {
+    html += `<tr data-row="${ri}"><th><input class="row-label-input" data-row-label="${ri}" value="${esc(row.label)}" placeholder="Строка ${ri + 1}" autocomplete="off" spellcheck="false"></th>`;
+    model.columns.forEach((col, ci) => {
+      const key = `${row.id}|${col.id}`;
+      const cell = ev.grid[ri][ci];
+      const raw = model.cells[key] ?? '';
+      const bad = raw.trim().length > 0 && !Number.isFinite(cell.value);
+      html += `<td data-cell-wrap="${ri}:${ci}"><input class="cell-input" data-cell="${ri}:${ci}" value="${esc(raw)}" placeholder="0" inputmode="decimal" autocomplete="off" spellcheck="false"><span class="cell-val${bad ? ' err' : ''}" data-val="${ri}:${ci}">${bad ? esc(cell.error || 'ошибка') : (Number.isFinite(cell.value) ? esc(fmt(cell.value)) : '')}</span></td>`;
+    });
+    if (model.showSumCol) html += `<td class="total" data-total="row:${ri}">${esc(fmt(ev.rowTotals[ri]))}</td>`;
+    html += '</tr>';
+  });
+  if (model.showSumRow) {
+    const grand = ev.colTotals.reduce((a, b) => a + b, 0);
+    html += '<tfoot><tr><th>Итого</th>' + ev.colTotals.map((t) => `<td data-total="col">${esc(fmt(t))}</td>`).join('')
+      + (model.showSumCol ? `<td data-total="grand">${esc(fmt(grand))}</td>` : '') + '</tr></tfoot>';
+  }
+  html += '</tbody></table>';
+  $('#table-wrap').innerHTML = html;
+  const errs = ev.errors || [];
+  const errBox = $('#errors');
+  errBox.hidden = !errs.length;
+  errBox.innerHTML = errs.map((e) => `<div>${esc(e)}</div>`).join('');
+  $('#sum-col').checked = !!model.showSumCol;
+  $('#sum-row').checked = !!model.showSumRow;
+}
+function refreshComputed() {
+  lastEval = evaluateCells(model);
+  const ev = lastEval;
+  $$('[data-val]', $('#table-wrap')).forEach((span) => {
+    const [ri, ci] = span.dataset.val.split(':').map(Number);
+    const raw = String(model.cells[`${model.rows[ri].id}|${model.columns[ci].id}`] ?? '');
+    const cell = ev.grid?.[ri]?.[ci];
+    const bad = raw.trim().length > 0 && cell && !Number.isFinite(cell.value);
+    span.textContent = bad ? (cell.error || 'ошибка') : (cell && Number.isFinite(cell.value) ? fmt(cell.value) : '');
+    span.classList.toggle('err', !!bad);
+  });
+  model.rows.forEach((row, ri) => {
+    const cell = $(`[data-total="row:${ri}"]`, $('#table-wrap'));
+    if (cell) cell.textContent = fmt(ev.rowTotals[ri]);
+  });
+  $$('[data-total="col"]', $('#table-wrap')).forEach((td, ci) => { td.textContent = fmt(ev.colTotals[ci]); });
+  const grand = $('[data-total="grand"]', $('#table-wrap'));
+  if (grand) grand.textContent = fmt(ev.colTotals.reduce((a, b) => a + b, 0));
+  const errs = ev.errors || [];
+  const errBox = $('#errors');
+  errBox.hidden = !errs.length;
+  errBox.innerHTML = errs.map((e) => `<div>${esc(e)}</div>`).join('');
+  renderVars();
+  renderChart();
+  renderDiagram();
+}
+
+/* ---------- вопрос словами ---------- */
+const ORDINALS = [
+  ['первый', '1'], ['первого', '1'], ['первом', '1'],
+  ['второй', '2'], ['второго', '2'], ['втором', '2'],
+  ['третий', '3'], ['третьего', '3'], ['третьем', '3'],
+  ['четвертый', '4'], ['четвёртый', '4'], ['четвертого', '4'], ['четвёртого', '4'], ['четвертом', '4'], ['четвёртом', '4'],
+  ['пятый', '5'], ['пятого', '5'], ['пятом', '5'],
+  ['шестой', '6'], ['шестого', '6'], ['шестом', '6'],
+  ['седьмой', '7'], ['седьмого', '7'], ['седьмом', '7'],
+  ['восьмой', '8'], ['восьмого', '8'], ['восьмом', '8'],
+  ['девятый', '9'], ['девятого', '9'], ['девятом', '9'],
+  ['десятый', '10'], ['десятого', '10'], ['десятом', '10'],
+];
+const STOP = new Set(['сколько','скольк','какой','какая','какие','каков','какова','какому','какого','какой','каком','какую','каким','какими','каких','какай','ваш','чему','равен','равна','равно','было','были','есть','был','надо','нужно','дайте','покажите','покажи','найдите','найди','ответьте','мне','и','в','во','на','за','по','к','ко','с','со','у','из','от','для','что','как','сейчас','среднее','средний','средняя','средние','всего','всег']);
+const isStop = (t) => t.length < 2 || STOP.has(t) || STOP.has(stem(t));
+const INTENT = [
+  { re: /(максим|больше\s+всего|наибольш|самы\w*\s+больш)/, kind: 'max' },
+  { re: /(миним|меньше\s+всего|наименьш|самы\w*\s+маленьк)/, kind: 'min' },
+  { re: /(сред)/, kind: 'avg' },
+  { re: /(на\s+сколько\s+больш|разниц)/, kind: 'diff' },
+  { re: /(итого|всего|суммарн|сумма|посчитай)/, kind: 'sum' },
+];
+function stem(tok) {
+  let t = tok;
+  const suffixes = ['иями','ами','ями','ого','его','ому','ему','ыми','ими','иях','ях','ах','ии','ий','ой','ей','ую','юю','ая','яя','ое','ее','ые','ие','ый','ить','ать','ять','еть','ать','уть','ться','сь','а','я','ы','и','е','о','у','ь'];
+  for (const s of suffixes) {
+    if (t.length - s.length >= 3 && t.endsWith(s)) return t.slice(0, t.length - s.length);
+  }
+  return t;
+}
+function tokensOf(text) {
+  let t = norm(text);
+  for (const [word, digit] of ORDINALS) t = t.replace(new RegExp(`\\b${word}\\b`, 'g'), digit);
+  return t.split(/[^\p{L}\d]+/u).filter(Boolean);
+}
+function matchLabel(qTokens, label) {
+  const lTokens = tokensOf(label).map(stem);
+  if (!lTokens.length) return 0;
+  const qStems = qTokens.map(stem);
+  let hits = 0;
+  for (const lt of lTokens) {
+    if (lt.length < 2) continue;
+    if (qStems.some((qt) => qt === lt || qt.startsWith(lt) || lt.startsWith(qt))) hits++;
+  }
+  // цифры должны совпадать точно
+  const lDigits = tokensOf(label).filter((t) => /^\d+$/.test(t));
+  for (const d of lDigits) {
+    if (qTokens.includes(d)) hits += 1.5; else if (lDigits.length) hits -= 0.75;
+  }
+  return hits;
+}
+function ask(question) {
+  const ev = lastEval;
+  const qTokens = tokensOf(question);
+  // для совпадения с таблицей берём только содержательные токены (цифры — всегда)
+  const matchTokens = qTokens.filter((t) => /^\d+$/.test(t) || !isStop(t));
+  const intent = (INTENT.find((i) => i.re.test(norm(question))) || {}).kind || null;
+  // совпадения
+  const bestMatch = (items, labelOf) => {
+    let best = null, bestScore = 0, tie = false;
+    items.forEach((item, i) => {
+      const s = matchLabel(matchTokens, labelOf(item));
+      if (s > bestScore) { bestScore = s; best = { item, i }; tie = false; }
+      else if (s === bestScore && s > 0) tie = true; // одинаковые очки — угадывать не будем
+    });
+    return (!tie && bestScore >= 1) ? best : null;
+  };
+  const rowBest = bestMatch(model.rows, (r) => r.label);
+  const usableRow = rowBest ? { row: rowBest.item, ri: rowBest.i } : null;
+  const colBest = bestMatch(model.columns, (c) => c.title);
+  const usableCol = colBest ? { col: colBest.item, ci: colBest.i } : null;
+  const varBest = bestMatch(model.vars, (v) => v.name);
+  const usableVar = varBest ? varBest.item : null;
+
+  const title = model.title ? `«${model.title}»` : 'таблица';
+  const rowUnit = usableRow?.row ? (model.rows[usableRow.ri] && '') : '';
+  // 1) и ячейка, и столбец найдены — это ячейка
+  if (usableCol && usableRow && !intent) {
+    const { col, ci } = usableCol, { row, ri } = usableRow;
+    const cell = ev.grid[ri][ci];
+    if (!Number.isFinite(cell.value)) return { ok: false, error: `В ячейке «${row.label} · ${col.title}» не число — проверьте таблицу.` };
+    return {
+      ok: true,
+      main: `${col.title}${col.unit ? `, ${col.unit}` : ''} — в строке «${row.label}»: ${fmt(cell.value)}${col.unit ? ' ' + col.unit : ''}`,
+      detail: `${title}: строка «${row.label}», столбец «${col.title}»`,
+      cells: [[ri, ci]],
+    };
+  }
+  // 2) только столбец (или столбец + намерение итога/среднего/макс/мин)
+  if (usableCol && !usableRow) {
+    const { col, ci } = usableCol;
+    const vals = ev.grid.map((r) => r[ci].value);
+    const fin = vals.filter(Number.isFinite);
+    const unit = col.unit ? ` ${col.unit}` : '';
+    if (!fin.length) return { ok: false, error: `В столбце «${col.title}» нет чисел.` };
+    const detailRows = model.rows.map((row, ri) => `${row.label}: ${Number.isFinite(vals[ri]) ? fmt(vals[ri]) : '—'}`).join(' · ');
+    if (intent === 'max') {
+      const i = vals.indexOf(Math.max(...fin));
+      return { ok: true, main: `Больше всего по столбцу «${col.title}»: ${fmt(fin.reduce((a, b) => Math.max(a, b), -Infinity))}${unit} — ${model.rows[i].label}`, detail: detailRows, cells: model.rows.map((_, ri) => [ri, ci]) };
+    }
+    if (intent === 'min') {
+      const min = Math.min(...fin);
+      const i = vals.indexOf(min);
+      return { ok: true, main: `Меньше всего по столбцу «${col.title}»: ${fmt(min)}${unit} — ${model.rows[i].label}`, detail: detailRows, cells: model.rows.map((_, ri) => [ri, ci]) };
+    }
+    if (intent === 'avg') {
+      const avg = fin.reduce((a, b) => a + b, 0) / fin.length;
+      return { ok: true, main: `Среднее по столбцу «${col.title}»: ${fmt(avg)}${unit}`, detail: `(${fin.map(fmt).join(' + ')}) / ${fin.length}`, cells: model.rows.map((_, ri) => [ri, ci]) };
+    }
+    // сумма по умолчанию — «сколько всего сделали?»
+    const sum = fin.reduce((a, b) => a + b, 0);
+    return { ok: true, main: `Всего по столбцу «${col.title}»: ${fmt(sum)}${unit}`, detail: detailRows, cells: model.rows.map((_, ri) => [ri, ci]) };
+  }
+  // 3) только строка
+  if (usableRow && !usableCol) {
+    const { row, ri } = usableRow;
+    const vals = ev.grid[ri].map((c) => c.value);
+    const fin = vals.filter(Number.isFinite);
+    if (!fin.length) return { ok: false, error: `В строке «${row.label}» нет чисел.` };
+    const detailCols = model.columns.map((col, ci) => `${col.title}: ${Number.isFinite(vals[ci]) ? fmt(vals[ci]) : '—'}`).join(' · ');
+    if (intent === 'avg') {
+      const avg = fin.reduce((a, b) => a + b, 0) / fin.length;
+      return { ok: true, main: `Среднее по строке «${row.label}»: ${fmt(avg)}`, detail: detailCols, cells: model.columns.map((_, ci) => [ri, ci]) };
+    }
+    if (intent === 'max') {
+      const max = Math.max(...fin);
+      const ci = vals.indexOf(max);
+      return { ok: true, main: `Больше всего в строке «${row.label}»: ${fmt(max)} (${model.columns[ci].title})`, detail: detailCols, cells: [[ri, ci]] };
+    }
+    if (intent === 'min') {
+      const min = Math.min(...fin);
+      const ci = vals.indexOf(min);
+      return { ok: true, main: `Меньше всего в строке «${row.label}»: ${fmt(min)} (${model.columns[ci].title})`, detail: detailCols, cells: [[ri, ci]] };
+    }
+    const sum = fin.reduce((a, b) => a + b, 0);
+    return { ok: true, main: `Всего в строке «${row.label}»: ${fmt(sum)}`, detail: detailCols, cells: model.columns.map((_, ci) => [ri, ci]) };
+  }
+  // 4) «сколько всего?» без уточнений — общий итог по таблице
+  if (!usableCol && !usableRow && !usableVar && intent === 'sum') {
+    const grand = ev.colTotals.reduce((a, b) => a + b, 0);
+    const perCol = model.columns.map((c, ci) => `${c.title}: ${fmt(ev.colTotals[ci])}${c.unit ? ' ' + c.unit : ''}`).join(' · ');
+    return { ok: true, main: `Всего по таблице: ${fmt(grand)}`, detail: `${title} → ${perCol}`, cells: model.rows.flatMap((_, ri) => model.columns.map((_, ci) => [ri, ci])) };
+  }
+  // 5) только переменная
+  if (usableVar && !usableCol && !usableRow) {
+    const v = Number(ev.scope[usableVar.name]);
+    return Number.isFinite(v)
+      ? { ok: true, main: `${usableVar.name} = ${fmt(v)}`, detail: `переменная «${usableVar.name}»`, cells: [] }
+      : { ok: false, error: `Переменная «${usableVar.name}» не посчиталась.` };
+  }
+  // 6) ничего не нашли — честно, с подсказкой
+  const rows = model.rows.map((r) => r.label).join(', ') || '—';
+  const cols = model.columns.map((c) => c.title).join(', ') || '—';
+  const vars = model.vars.map((v) => v.name).join(', ') || '—';
+  return {
+    ok: false,
+    error: `Не понял, про что вопрос. В таблице есть строки: ${rows}; столбцы: ${cols}${vars !== '—' ? `; переменные: ${vars}` : ''}. Спросите, например: «сколько ${model.columns[0]?.title.toLowerCase() || 'сделали'} в ${model.rows[0]?.label.toLowerCase() || 'первом дне'}?»`,
+  };
+}
+function flashCells(cells) {
+  const wrap = $('#table-wrap');
+  const targets = [];
+  for (const [ri, ci] of cells || []) {
+    const td = wrap.querySelector(`[data-cell-wrap="${ri}:${ci}"]`);
+    if (td) targets.push(td);
+  }
+  targets.forEach((el) => { el.classList.remove('flash'); void el.offsetWidth; el.classList.add('flash'); });
+}
+
+/* ---------- график ---------- */
+let chartCol = null;
+function renderChart() {
+  const sel = $('#chart-col'), canvas = $('#chart-canvas');
+  if (!sel || !canvas) return;
+  const cols = model.columns;
+  if (!cols.some((c) => c.id === chartCol)) chartCol = cols[0]?.id || null;
+  const want = cols.map((c) => c.id).join('|');
+  if (sel.dataset.cols !== want) {
+    sel.innerHTML = cols.map((c, i) => `<option value="${esc(c.id)}">${esc(c.title || `Столбец ${i + 1}`)}</option>`).join('');
+    sel.dataset.cols = want;
+  }
+  if (chartCol && sel.value !== chartCol) sel.value = chartCol;
+  const col = cols.find((c) => c.id === chartCol);
+  const series = [];
+  model.rows.forEach((row, ri) => {
+    const v = lastEval.grid?.[ri]?.[cols.findIndex((c) => c.id === chartCol)]?.value;
+    if (Number.isFinite(v)) series.push({ label: String(row.label || `Строка ${ri + 1}`), value: v });
+  });
+  drawChart(canvas, series, col?.unit || '');
+}
+function drawChart(canvas, series, unit) {
+  const ctx = canvas.getContext && canvas.getContext('2d');
+  if (!ctx) return; // canvas недоступен — график просто не рисуется
+  const d = window.devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  canvas.width = Math.max(1, Math.floor(w * d));
+  canvas.height = Math.max(1, Math.floor(h * d));
+  ctx.setTransform(d, 0, 0, d, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#121519';
+  ctx.fillRect(0, 0, w, h);
+  if (!series.length) {
+    ctx.fillStyle = '#8b94a0';
+    ctx.font = '13px system-ui';
+    ctx.fillText('Нет числовых данных — заполните ячейки', 14, h / 2);
+    return;
+  }
+  const values = series.map((s) => s.value);
+  const maxV = Math.max(...values, 0), minV = Math.min(...values, 0);
+  const range = (maxV - minV) || 1;
+  const labelW = Math.min(130, Math.max(70, Math.floor(w * 0.32)));
+  const valueW = 60;
+  const pad = { left: labelW + 10, right: valueW + 8, top: 8, bottom: 8 };
+  const plotW = Math.max(20, w - pad.left - pad.right);
+  const zeroX = pad.left + ((0 - minV) / range) * plotW;
+  const xOf = (v) => pad.left + ((v - minV) / range) * plotW;
+  ctx.strokeStyle = '#3a424b'; ctx.lineWidth = 1.5;
+  ctx.beginPath(); ctx.moveTo(zeroX, 4); ctx.lineTo(zeroX, h - 4); ctx.stroke();
+  const rowH = (h - pad.top - pad.bottom) / series.length;
+  const barH = Math.min(24, Math.max(8, rowH * 0.6));
+  series.forEach((s, i) => {
+    const cy = pad.top + rowH * (i + 0.5);
+    const x0 = Math.min(zeroX, xOf(s.value));
+    const bw = Math.max(2, Math.abs(xOf(s.value) - zeroX));
+    ctx.fillStyle = '#c7cdd5'; ctx.font = '12px system-ui'; ctx.textAlign = 'right';
+    const label = s.label.length > 15 ? s.label.slice(0, 14) + '…' : s.label;
+    ctx.fillText(label, pad.left - 8, cy + 4);
+    ctx.fillStyle = '#ff9f0a';
+    ctx.beginPath();
+    if (typeof ctx.roundRect === 'function') ctx.roundRect(x0, cy - barH / 2, bw, barH, 3);
+    else ctx.rect(x0, cy - barH / 2, bw, barH);
+    ctx.fill();
+    ctx.fillStyle = '#ffcf8a'; ctx.font = '11px ui-monospace, Menlo, monospace'; ctx.textAlign = 'left';
+    ctx.fillText(`${fmt(s.value)}${unit ? ' ' + unit : ''}`, Math.min(w - valueW + 6, x0 + bw + 6), cy + 4);
+  });
+  ctx.textAlign = 'left';
+}
+
+/* ---------- стрелки: что от чего зависит ---------- */
+const OP_SYMBOL = { plus: '+', minus: '−', times: '×', div: '÷', pct: '%', dep: '→' };
+function renderDiagram() {
+  const box = $('#diagram');
+  const W = 380, baseY = 84, pad = 30;
+  const pts = model.columns.map((c, ci) => ({ kind: 'col', id: c.id, label: String(c.title || `Столбец ${ci + 1}`).trim() || `Столбец ${ci + 1}`, value: lastEval.colTotals[ci] }));
+  const vars = model.vars.map((v) => ({ kind: 'var', id: v.name, label: v.name, value: lastEval.scope[v.name] }));
+  const all = [...vars, ...pts];
+  const n = Math.max(all.length, 1);
+  const step = all.length > 1 ? (W - 2 * pad - 30) / (all.length - 1) : 0;
+  const xOf = (i) => pad + i * step;
+  const LINE = '#3a4150', INK = '#e8e9ec', MUT = '#8a8f9c', ACC = '#ff9f0a';
+  let s = `<svg viewBox="0 0 ${W} 132" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Схема зависимостей">`;
+  s += `<line x1="8" y1="${baseY}" x2="${W - 12}" y2="${baseY}" stroke="${LINE}" stroke-width="2"/>`;
+  s += `<path d="M ${W - 12} ${baseY} l -8 -5 v 10 z" fill="${LINE}"/>`;
+  all.forEach((p, i) => {
+    const x = xOf(i);
+    s += `<line x1="${x}" y1="${baseY - 7}" x2="${x}" y2="${baseY + 7}" stroke="${INK}" stroke-width="2"/>`;
+    s += `<text x="${x}" y="${baseY + 20}" fill="${INK}" font-size="11" text-anchor="middle" font-weight="600">${esc(Number.isFinite(p.value) ? fmt(p.value) : '?')}</text>`;
+    s += `<text x="${x}" y="${baseY + 34}" fill="${MUT}" font-size="9.5" text-anchor="middle">${esc(p.label.length > 12 ? p.label.slice(0, 11) + '…' : p.label)}</text>`;
+  });
+  const indexOf = (kind, id) => all.findIndex((p) => p.kind === kind && p.id === id);
+  const arc = (i, j, label) => {
+    if (i < 0 || j < 0 || i === j) return '';
+    const x1 = xOf(i), x2 = xOf(j);
+    const mx = (x1 + x2) / 2, lift = 26 + Math.min(22, Math.abs(x2 - x1) / 6);
+    const y = baseY - lift;
+    return `<path d="M ${x1} ${baseY - 8} Q ${mx} ${y - 18} ${x2} ${baseY - 8}" fill="none" stroke="${ACC}" stroke-width="1.8" marker-end="url(#ah)"/>`
+      + `<text x="${mx}" y="${y - 6}" fill="${ACC}" font-size="10.5" text-anchor="middle" font-weight="700">${esc(label)}</text>`;
+  };
+  let arcs = '';
+  for (const rel of model.relations || []) {
+    arcs += arc(indexOf(rel.fromKind, rel.from), indexOf(rel.toKind, rel.to), OP_SYMBOL[rel.op] || rel.op);
+  }
+  s += '<defs><marker id="ah" viewBox="0 0 10 10" refX="8" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse"><path d="M 0 0 L 10 5 L 0 10 z" fill="#ff9f0a"/></marker></defs>';
+  s += arcs;
+  if (!all.length) s += `<text x="${W / 2}" y="${baseY - 16}" fill="${MUT}" font-size="11" text-anchor="middle">Добавьте переменные или столбцы</text>`;
+  s += '</svg>';
+  box.innerHTML = s;
+  // селекты стрелок
+  const opts = all.map((p) => `<option value="${p.kind}:${esc(p.id)}">${p.kind === 'var' ? 'переменная' : 'столбец'} «${esc(p.label)}»</option>`).join('');
+  const fromSel = $('#rel-from'), toSel = $('#rel-to');
+  const pf = fromSel.value, pt = toSel.value;
+  fromSel.innerHTML = opts; toSel.innerHTML = opts;
+  if ([...fromSel.options].some((o) => o.value === pf)) fromSel.value = pf;
+  if ([...toSel.options].some((o) => o.value === pt)) toSel.value = pt;
+  else if (toSel.options.length > 1) toSel.selectedIndex = 1;
+  const labelOf = (kind, id) => {
+    const p = all.find((p) => p.kind === kind && p.id === id);
+    return p ? `${p.kind === 'var' ? 'переменная' : 'столбец'} «${p.label}»` : id;
+  };
+  $('#relations').innerHTML = (model.relations || []).map((rel) =>
+    `<span class="rel-chip">${esc(labelOf(rel.fromKind, rel.from))} <b>${esc(OP_SYMBOL[rel.op] || rel.op)}</b> ${esc(labelOf(rel.toKind, rel.to))}<button type="button" data-del-rel="${esc(rel.id)}" aria-label="Удалить стрелку">×</button></span>`
+  ).join('');
+}
+function renderRelations() { renderDiagram(); }
+
+/* ---------- события ---------- */
+$('#title').addEventListener('input', (e) => { model.title = e.target.value; save(); });
+
+$('#add-var-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const nameEl = $('#var-name'), exprEl = $('#var-expr');
+  const name = nameEl.value.trim();
+  const expr = exprEl.value.trim();
+  if (!/^[A-Za-zА-Яа-я_][\wА-Яа-я_]*$/.test(name)) { alert('Имя переменной: буквы, цифры и _ (с буквы).'); return; }
+  model.vars.push({ name, expr: expr || '0' });
+  nameEl.value = ''; exprEl.value = '';
+  save(); renderAll();
+});
+$('#vars').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-del-var]');
+  if (!btn) return;
+  model.vars.splice(Number(btn.dataset.delVar), 1);
+  save(); renderAll();
+});
+
+$('#table-wrap').addEventListener('input', (e) => {
+  const t = e.target;
+  if (t.dataset.colTitle !== undefined) model.columns[+t.dataset.colTitle].title = t.value;
+  else if (t.dataset.colUnit !== undefined) model.columns[+t.dataset.colUnit].unit = t.value;
+  else if (t.dataset.rowLabel !== undefined) model.rows[+t.dataset.rowLabel].label = t.value;
+  else if (t.dataset.cell !== undefined) {
+    const [ri, ci] = t.dataset.cell.split(':').map(Number);
+    model.cells[`${model.rows[ri].id}|${model.columns[ci].id}`] = t.value;
+  } else return;
+  save();
+  refreshComputed();
+});
+$('#table-wrap').addEventListener('change', (e) => {
+  // смена названия столбца влияет на ссылки — пересобрать целиком
+  if (e.target.dataset.colTitle !== undefined || e.target.dataset.rowLabel !== undefined || e.target.dataset.colUnit !== undefined) {
+    renderAll();
+  }
+});
+$('#sum-col').addEventListener('change', (e) => { model.showSumCol = e.target.checked; save(); renderAll(); });
+$('#sum-row').addEventListener('change', (e) => { model.showSumRow = e.target.checked; save(); renderAll(); });
+
+$('#add-col').addEventListener('click', () => {
+  model.columns.push({ id: uid(), title: `Столбец ${model.columns.length + 1}`, unit: '' });
+  save(); renderAll();
+});
+$('#del-col').addEventListener('click', () => {
+  if (model.columns.length <= 1) return;
+  const col = model.columns.pop();
+  for (const key of Object.keys(model.cells)) if (key.endsWith(`|${col.id}`)) delete model.cells[key];
+  model.relations = model.relations.filter((r) => !(r.fromKind === 'col' && r.from === col.id) && !(r.toKind === 'col' && r.to === col.id));
+  save(); renderAll();
+});
+$('#add-row').addEventListener('click', () => {
+  model.rows.push({ id: uid(), label: `Строка ${model.rows.length + 1}` });
+  save(); renderAll();
+});
+$('#del-row').addEventListener('click', () => {
+  if (model.rows.length <= 1) return;
+  const row = model.rows.pop();
+  for (const key of Object.keys(model.cells)) if (key.startsWith(`${row.id}|`)) delete model.cells[key];
+  save(); renderAll();
+});
+
+$('#chart-col').addEventListener('change', (e) => { chartCol = e.target.value; renderChart(); });
+
+const qaForm = $('#qa-form');
+qaForm.addEventListener('submit', (e) => {
+  e.preventDefault();
+  const input = $('#qa-input');
+  const question = input.value.trim();
+  const ansBox = $('#qa-answer'), errBox = $('#qa-error');
+  if (!question) return;
+  const res = ask(question);
+  if (!res.ok) {
+    ansBox.style.display = 'none';
+    errBox.style.display = 'block';
+    errBox.textContent = res.error;
+    return;
+  }
+  errBox.style.display = 'none';
+  ansBox.style.display = 'block';
+  ansBox.innerHTML = `<b>${esc(res.main)}</b>${res.detail ? `<div class="qa-src">${esc(res.detail)}</div>` : ''}`;
+  flashCells(res.cells);
+  const hist = $('#qa-history');
+  const item = document.createElement('div');
+  item.className = 'qa-item';
+  item.innerHTML = `<div class="qa-q">${esc(question)}</div><div class="qa-a">${esc(res.main)}</div>`;
+  hist.prepend(item);
+  while (hist.children.length > 12) hist.lastElementChild.remove();
+  input.value = '';
+});
+
+$('#rel-form').addEventListener('submit', (e) => {
+  e.preventDefault();
+  const from = $('#rel-from').value, to = $('#rel-to').value, op = $('#rel-op').value;
+  if (!from || !to || from === to) return;
+  const [fromKind, fromId] = from.split(':');
+  const [toKind, toId] = to.split(':');
+  model.relations.push({ id: uid(), fromKind, from: fromId, toKind, to: toId, op });
+  save(); renderDiagram();
+});
+$('#relations').addEventListener('click', (e) => {
+  const btn = e.target.closest('[data-del-rel]');
+  if (!btn) return;
+  model.relations = model.relations.filter((r) => r.id !== btn.dataset.delRel);
+  save(); renderDiagram();
+});
+
+$('#preset-days').addEventListener('click', () => { model = defaultDays(); save(); renderAll(); flashCells([]); });
+$('#preset-smeta').addEventListener('click', () => { model = presetSmeta(); save(); renderAll(); });
+$('#clear-all').addEventListener('click', () => { model = emptyModel(); save(); renderAll(); });
+
+window.addEventListener('resize', () => renderChart());
+
+renderAll();
+</script>
+</body>
+</html>

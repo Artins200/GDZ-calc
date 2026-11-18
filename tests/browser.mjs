@@ -88,113 +88,24 @@ const ok = (name, fn) => {
 const assert = (cond, msg) => { if (!cond) throw new Error(msg || 'ожидалось true'); };
 
 console.log('\nЗАГРУЗКА ПРИЛОЖЕНИЯ');
-ok('модули загрузились, вкладки на месте', () => {
-  for (const go of ['scheme', 'ru']) assert($("[data-go=\"' + go + '\"]") === null || true);
-  assert($$('.tab').some((b) => b.dataset.go === 'scheme'), 'вкладки «Схема» нет');
-  assert($$('.tab').some((b) => b.dataset.go === 'ru'), 'вкладки «Русский» нет');
+ok('модули загрузились, вкладок «Задачи» и «Русский» нет, «Смета» есть', () => {
+  assert(!$$('.tab').some((b) => b.dataset.go === 'task'), 'вкладка «Задачи» осталась');
+  assert(!$$('.tab').some((b) => b.dataset.go === 'ru'), 'вкладка «Русский» осталась');
+  assert($$('.tab').some((b) => b.dataset.go === 'smeta'), 'вкладки «Смета» нет');
+  assert($('#screen-smeta'), 'screen-smeta не найден');
 });
 
-console.log('\nЗАДАЧИ: Дано — Найти — Решение — Ответ');
-ok('простая задача даёт карточку с «Дано» и «Найти»', () => {
-  type('#task-input', 'Купили 3 кг яблок по 120 рублей за килограмм. Сколько заплатили?');
-  click('#task-solve');
-  const html = $('#task-result').innerHTML;
-  assert(html.includes('Дано:'), 'нет блока «Дано»');
-  assert(html.includes('Найти:'), 'нет блока «Найти»');
-  assert(html.includes('360'), 'ответ 360 не найден');
-  assert(html.includes('Решение по действиям'), 'нет блока «Решение по действиям»');
+console.log('\nВКЛАДКА «СМЕТА»');
+ok('переключение на «Смета» активирует экран', () => {
+  click('[data-go="smeta"]');
+  assert($('#screen-smeta').classList.contains('active'), 'screen-smeta не активен');
+  assert($('#bar-title').textContent === 'Смета', 'в шапке не «Смета»');
 });
-
-console.log('\nВКЛАДКА «СХЕМА»');
-ok('переключение на «Схема» активирует экран', () => {
-  click('[data-go="scheme"]');
-  assert($('#screen-scheme').classList.contains('active'), 'screen-scheme не активен');
-});
-ok('пресет «Смета»: сетка из 3×3 ячеек и решение на 291 ₽', () => {
-  click('[data-preset="smeta"]');
-  assert($$('#scheme-grid .cell-input').length === 9, 'ожидалась сетка 3×3');
-  click('#scheme-solve');
-  const html = $('#scheme-out').innerHTML;
-  assert(html.includes('291'), `ответ 291 ₽ не найден: ${html.slice(0, 200)}`);
-  assert(html.includes('Дано:'), 'нет «Дано» в карточке решения');
-});
-ok('график таблицы: выпадающий список столбцов и canvas на месте', () => {
-  const sel = $('#scheme-chart-col');
-  assert(sel && sel.options.length >= 3, 'в списке столбцов пусто');
-  const canvas = $('#scheme-chart-canvas');
-  assert(canvas && canvas.tagName === 'CANVAS', 'canvas графика не найден');
-});
-ok('пресет «Корзины» и пересчёт после правки ячейки', () => {
-  click('[data-preset="baskets"]');
-  const cell = $('#scheme-grid .cell-input');
-  assert(cell, 'ячейки нет');
-  cell.value = '30';
-  cell.dispatchEvent(new window.Event('input', { bubbles: true }));
-  const html = $('#scheme-out').innerHTML; // не должно быть падения
-  assert($('#screen-scheme').classList.contains('active'));
-});
-ok('«Своё действие» добавляется в список и решается', () => {
-  click('[data-preset="blank"]');
-  type('#scheme-custom-label', 'Половина суммы');
-  type('#scheme-custom-formula', '(a + b) / 2');
-  click('#scheme-add-custom button[type="submit"], #scheme-add-custom .btn');
-  const list = $('#scheme-custom-list').innerHTML;
-  assert(list.includes('Половина суммы'), 'своё действие не добавилось');
-});
-ok('«Составить условие» собирает полный текст с таблицей', () => {
-  click('[data-preset="smeta"]');
-  click('#scheme-compose');
-  const wrap = $('#scheme-condition-wrap');
-  assert(!wrap.hidden, 'блок условия скрыт');
-  const text = $('#scheme-condition').textContent;
-  assert(text.includes('Таблица:'), 'в условии нет таблицы');
-  assert(text.includes('291'), 'в условии нет итога 291');
-});
-ok('график: код отрисовки выполняется без ошибок при заданной ширине canvas', () => {
-  const canvas = $('#scheme-chart-canvas');
-  Object.defineProperty(canvas, 'clientWidth', { value: 640, configurable: true });
-  Object.defineProperty(canvas, 'clientHeight', { value: 190, configurable: true });
-  click('[data-go="geo"]');   // переключаемся и возвращаемся — show() перерисует график
-  click('[data-go="scheme"]');
-  assert(canvas.width > 0 && canvas.height > 0, 'canvas не получил размер');
-});
-ok('localStorage сохранил схему', () => {
-  assert(window.localStorage.getItem('gdzcalc.scheme.v1'), 'схема не сохранилась');
-});
-
-console.log('\nВКЛАДКА «РУССКИЙ»');
-ok('переключение на «Русский» активирует экран', () => {
-  click('[data-go="ru"]');
-  assert($('#screen-ru').classList.contains('active'), 'screen-ru не активен');
-});
-ok('«читающий» → причастие, действительное, настоящего', () => {
-  type('#ru-word', 'читающий');
-  click('#ru-analyze');
-  const html = $('#ru-out').innerHTML;
-  assert(html.includes('причастие'), 'нет слова «причастие»');
-  assert(html.includes('действительное'), 'нет разряда «действительное»');
-  assert(html.includes('настоящего'), 'нет времени «настоящего»');
-});
-ok('авторежим: «бежит» — глагол (не причастие)', () => {
-  type('#ru-word', 'бежит');
-  click('#ru-analyze');
-  assert($('#ru-out').innerHTML.includes('глагол'), 'бежит не определён как глагол');
-});
-ok('ручной режим «Причастие»: «сделанный» — страдательное прошедшего', () => {
-  click('[data-mode="participle"]');
-  type('#ru-word', 'сделанный');
-  click('#ru-analyze');
-  const html = $('#ru-out').innerHTML;
-  assert(html.includes('страдательное'), 'нет «страдательное»');
-  assert(html.includes('прошедшего'), 'нет «прошедшего»');
-});
-ok('справочник отрисовался (10 разделов)', () => {
-  assert($$('#ru-ref .ru-sec').length === 10, `разделов: ${$$('#ru-ref .ru-sec').length}`);
-});
-ok('квиз отрисовался и кнопки отвечают', () => {
-  const opt = $('#ru-quiz button');
-  assert(opt, 'вопросов квиза нет');
-  opt.dispatchEvent(new window.MouseEvent('click', { bubbles: true }));
+ok('внутри iframe — отдельный движок smeta.html', () => {
+  const frame = $('#smeta-frame');
+  assert(frame, 'iframe не найден');
+  assert(/smeta\.html$/.test(frame.getAttribute('src')), `src=${frame.getAttribute('src')}`);
+  assert($('.smeta-note a[href="smeta.html"]'), 'ссылки на smeta.html нет');
 });
 
 console.log('\nГЕОМЕТРИЯ: идеальный треугольник');

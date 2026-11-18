@@ -85,10 +85,10 @@ mkdir -p "$WORK/res" "$WORK/gen" "$WORK/classes" "$WORK/dex" "$WORK/assets/www"
 "$AAPT2" compile --dir "$HERE/res" -o "$WORK/res/resources.zip"
 
 # Содержимое веб-приложения кладём в assets/www (см. MainActivity.serve()).
-cp "$REPO/index.html" "$REPO/styles.css" "$WORK/assets/www/"
+cp "$REPO/index.html" "$REPO/styles.css" "$REPO/smeta.html" "$WORK/assets/www/"
 mkdir -p "$WORK/assets/www/js"
 # Копируем только рабочие модули, чтобы в APK не попадали временные файлы тестов.
-for f in app.js mathcore.js formulas.js intervals.js inequalities.js tasks.js topic-solvers.js classifier.js grapher.js dispatcher.js dispatcher-model.js families.js it.js geo.js multiday.js verifier.js lexicon.js groups.js scheme.js ru.js triangle.js; do
+for f in app.js mathcore.js formulas.js intervals.js inequalities.js grapher.js it.js geo.js triangle.js; do
   cp "$REPO/js/$f" "$WORK/assets/www/js/"
 done
 say "assets: $(find "$WORK/assets/www" -type f | wc -l) файлов, $(du -sh "$WORK/assets/www" | cut -f1)"

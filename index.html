@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=5, viewport-fit=cover">
 <title>Калькулятор</title>
-<meta name="description" content="Калькулятор: считает примеры в столбик, решает задачи через «Дано — Найти — Решение», строит графики, схемы и сметы, идеальные чертежи треугольников и разбирает слова по составу (русский язык).">
+<meta name="description" content="Калькулятор: примеры в столбик, неравенства, графики, идеальные чертежи треугольников, справочник формул и «Смета» — таблица с переменными, выражениями, графиком и вопросами словами.">
 <meta name="theme-color" content="#0e1013">
 <meta name="color-scheme" content="dark">
 <link rel="stylesheet" href="styles.css">
@@ -27,13 +27,11 @@
   <nav class="tabs" id="tabs">
     <button type="button" class="tab active" data-go="calc">Счёт</button>
     <button type="button" class="tab" data-go="ineq">Неравенства</button>
-    <button type="button" class="tab" data-go="task">Задачи</button>
     <button type="button" class="tab" data-go="interval">Прямая</button>
     <button type="button" class="tab" data-go="graph">Графики</button>
     <button type="button" class="tab" data-go="info">Информатика</button>
     <button type="button" class="tab" data-go="geo">Геометрия</button>
-    <button type="button" class="tab" data-go="scheme">Схема</button>
-    <button type="button" class="tab" data-go="ru">Русский</button>
+    <button type="button" class="tab" data-go="smeta">Смета</button>
   </nav>
 
   <main>
@@ -122,17 +120,6 @@ A ∪ B">A ∩ B, A ∪ B</button>
     </section>
 
     <!-- ============================== ЗАДАЧА =============================== -->
-    <section class="screen" id="screen-task">
-      <div class="panel">
-        <label class="field-label" for="task-input">Условие задачи</label>
-        <textarea id="task-input" rows="4" placeholder="Вставьте текст задачи" autocomplete="off"></textarea>
-        <div class="calc-row">
-          <input class="input" type="text" id="task-user-answer" inputmode="decimal" placeholder="Ваш ответ (необязательно)" autocomplete="off" aria-label="Ваш ответ">
-          <button class="btn primary" id="task-solve">Решить</button>
-        </div>
-        <div class="out" id="task-result"></div>
-      </div>
-    </section>
 
     <!-- ============================ ПРОМЕЖУТКИ ============================ -->
     <section class="screen" id="screen-interval">
@@ -278,122 +265,14 @@ A ∪ B">A ∩ B, A ∪ B</button>
     </section>
 
     <!-- =============================== СХЕМА ============================== -->
-    <section class="screen" id="screen-scheme">
-      <div class="panel">
-        <label class="field-label" for="scheme-group">Что решаем / к какой подгруппе относимся</label>
-        <select class="input" id="scheme-group"></select>
-        <input class="input" type="text" id="scheme-title" placeholder="Название схемы (например, «Смета покупки»)" autocomplete="off" style="margin-top:8px">
-        <div class="chips" id="scheme-presets"></div>
-        <p class="hint hint-note">Схема = таблица (вертикальные и горизонтальные линии) + переменные + стрелки «что от чего зависит». Значения ячеек можно считать выражениями («колво * цена») — они подхватывают переменные и левые столбцы своей строки.</p>
-      </div>
-
-      <div class="panel" style="margin-top:10px">
-        <div class="field-label">Переменные — можно сколько угодно, значение можно задавать выражением</div>
-        <div class="scheme-vars" id="scheme-vars"></div>
-        <form class="calc-row" id="scheme-add-var" autocomplete="off">
-          <input class="input" type="text" id="scheme-var-name" placeholder="имя (напр., цена)" autocomplete="off" spellcheck="false">
-          <input class="input" type="text" id="scheme-var-expr" placeholder="значение или выражение (3 * цена)" autocomplete="off" spellcheck="false">
-          <button class="btn" type="submit">+ Переменная</button>
-        </form>
-      </div>
-
-      <div class="panel" style="margin-top:10px">
-        <div class="field-label">Таблица (вертикальные и горизонтальные линии)</div>
-        <div class="scheme-grid-wrap" id="scheme-grid"></div>
-        <div class="scheme-tools">
-          <button class="btn small" id="scheme-add-col">+ Столбец</button>
-          <button class="btn small" id="scheme-del-col">− Столбец</button>
-          <button class="btn small" id="scheme-add-row">+ Строка</button>
-          <button class="btn small" id="scheme-del-row">− Строка</button>
-          <label class="mini-label"><input type="checkbox" id="scheme-sum-col" checked> «Всего» по строкам</label>
-          <label class="mini-label"><input type="checkbox" id="scheme-sum-row" checked> «Итого» по столбцам</label>
-        </div>
-        <div class="err" id="scheme-errors" hidden></div>
-      </div>
-
-      <div class="panel" style="margin-top:10px">
-        <div class="panel-head-row">
-          <div class="field-label" style="margin:0">График по таблице</div>
-          <select class="input mini-select" id="scheme-chart-col" aria-label="Столбец для графика"></select>
-        </div>
-        <canvas class="scheme-chart" id="scheme-chart-canvas" role="img" aria-label="Столбчатая диаграмма по значениям выбранного столбца"></canvas>
-        <p class="hint">Столбчатая диаграмма: значение выбранного столбца по строкам. Считается мгновенно и офлайн.</p>
-      </div>
-
-      <div class="panel" style="margin-top:10px">
-        <div class="field-label">Стрелки — что от чего зависит (зависит и от выбранного вопроса)</div>
-        <div class="scheme-diagram" id="scheme-diagram"></div>
-        <form class="calc-row" id="scheme-add-rel">
-          <select class="input" id="scheme-rel-from" aria-label="Откуда"></select>
-          <select class="input" id="scheme-rel-op" aria-label="Операция"></select>
-          <select class="input" id="scheme-rel-to" aria-label="Куда"></select>
-          <button class="btn" type="submit">+ Стрелка</button>
-        </form>
-        <div class="scheme-relations" id="scheme-relations"></div>
-      </div>
-
-      <div class="panel" style="margin-top:10px">
-        <div class="field-label">Что нужно найти — заготовленные вопросы</div>
-        <div class="chips" id="scheme-questions"></div>
-        <div class="fields" id="scheme-operands" style="margin-top:10px"></div>
-        <div class="calc-row" style="margin-top:10px">
-          <button class="btn primary" id="scheme-solve">Решить</button>
-          <button class="btn" id="scheme-compose">Составить условие</button>
-          <button class="btn" id="scheme-to-tasks">Вставить в «Задачи»</button>
-        </div>
-        <div class="out" id="scheme-out"></div>
-        <div id="scheme-condition-wrap" hidden>
-          <div class="field-label" style="margin-top:10px">Полноценное условие (можно скопировать или отправить в «Задачи»)</div>
-          <pre class="condition-block" id="scheme-condition"></pre>
-          <button class="btn small" id="scheme-copy-condition">Копировать условие</button>
-        </div>
-        <details class="more" style="margin-top:10px"><summary>Своё действие — добавить свою операцию (что можно ещё сделать)</summary>
-          <div class="more-body">
-            <form id="scheme-add-custom" autocomplete="off">
-              <div class="calc-row"><input class="input" type="text" id="scheme-custom-label" placeholder="Название (например, «Половина суммы»)" required></div>
-              <div class="calc-row"><input class="input" type="text" id="scheme-custom-formula" placeholder="Формула над переменными и столбцами (например, (a + b + c) / 2)" spellcheck="false" required></div>
-              <div class="calc-row">
-                <input class="input" type="text" id="scheme-custom-unit" placeholder="Единицы (необязательно)" autocomplete="off">
-                <input class="input" type="text" id="scheme-custom-question" placeholder="Вопрос (например, «Сколько всего?»)" autocomplete="off">
-              </div>
-              <button class="btn" type="submit">+ Добавить в «Своё действие»</button>
-            </form>
-            <p class="hint">В формуле работают переменные, а имя столбца означает сумму этого столбца. Действие сохранится и появится в списке «Своё действие» рядом с заготовленными.</p>
-            <div class="scheme-custom-list" id="scheme-custom-list"></div>
-          </div>
-        </details>
-      </div>
-    </section>
 
     <!-- ============================== РУССКИЙ ============================= -->
-    <section class="screen" id="screen-ru">
-      <div class="panel">
-        <div class="field-label">Морфологический разбор слова (причастие и не только)</div>
-        <div class="chips" id="ru-modes">
-          <button type="button" class="active" data-mode="auto">Авто</button>
-          <button type="button" data-mode="participle">Причастие</button>
-          <button type="button" data-mode="adverbial">Деепричастие</button>
-          <button type="button" data-mode="verb">Глагол</button>
-          <button type="button" data-mode="noun">Существительное</button>
-          <button type="button" data-mode="adjective">Прилагательное</button>
-        </div>
-        <div class="calc-row">
-          <input class="input" type="text" id="ru-word" placeholder="Например: читающий, сделанная, решено…" autocomplete="off" spellcheck="false">
-          <button class="btn primary" id="ru-analyze">Разобрать</button>
-        </div>
-        <p class="hint hint-note">Работает офлайн по правилам и словарю: разряд, время, вид, возвратность, полная/краткая форма, род, число, падеж, начальная форма и роль в предложении. Спорные случаи помечаются честно.</p>
-        <div class="out" id="ru-out"></div>
-      </div>
 
-      <div class="panel" style="margin-top:10px">
-        <div class="field-label">Справочник: причастие, н/нн, причастный оборот, не с причастиями и т. д.</div>
-        <div id="ru-ref"></div>
-      </div>
 
-      <div class="panel" style="margin-top:10px">
-        <div class="field-label">Тест: определи разряд причастия</div>
-        <div id="ru-quiz"></div>
-      </div>
+    <!-- ============================== СМЕТА ============================== -->
+    <section class="screen" id="screen-smeta">
+      <iframe id="smeta-frame" class="smeta-frame" src="smeta.html" title="Смета — таблица с вопросами словами" loading="lazy"></iframe>
+      <p class="smeta-note">Это отдельный файл-движок <a href="smeta.html" target="_blank" rel="noopener">smeta.html</a> — бесплатный, открытый код (MIT), можно открывать и без приложения.</p>
     </section>
 
     <!-- ============================ НАСТРОЙКИ ============================= -->
