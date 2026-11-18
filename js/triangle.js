@@ -137,7 +137,9 @@ export function triangleSVG(tri, opts = {}) {
   const scale = Math.min((W - 2 * pad) / Math.max(1e-9, maxX - minX), (H - 2 * pad) / Math.max(1e-9, maxY - minY));
   // центрируем и переворачиваем y (в SVG ось y вниз)
   const ox = (W - (maxX - minX) * scale) / 2 - minX * scale;
-  const oy = (H + (maxY - minY) * scale) / 2 - maxY * scale;
+  // y в SVG направлен вниз: вершину треугольника держим ВНУТРИ холста.
+  // y_svg = -y*scale + oy; хотим: самая нижняя вершина (minY) → (H + h*scale)/2.
+  const oy = (H + (maxY - minY) * scale) / 2 + minY * scale;
   const P = (p) => ({ x: p.x * scale + ox, y: -p.y * scale + oy });
   const A = P(tri.A), B = P(tri.B), C = P(tri.C);
 

@@ -128,7 +128,10 @@ export function presetScheme(id) {
           'r3|c1': '1', 'r3|c2': '240','r3|c3': 'колво * цена',
         },
         showSumRow: true,
-        relations: [{ id: 'rel1', fromKind: 'col', from: 'c1', toKind: 'col', to: 'c3', op: 'times' }],
+        relations: [
+          { id: 'rel1', fromKind: 'col', from: 'c1', toKind: 'col', to: 'c3', op: 'times' },
+          { id: 'rel2', fromKind: 'col', from: 'c2', toKind: 'col', to: 'c3', op: 'times' },
+        ],
         questionId: 'grandTotal',
         assignments: { total: { kind: 'columnSum', columnId: 'c3' } },
         customQuestions: [],
@@ -149,7 +152,10 @@ export function presetScheme(id) {
         ],
         rows: [{ id: 'r1', label: 'Поезд', unit: '' }],
         cells: { 'r1|c1': 'v', 'r1|c2': 't', 'r1|c3': 'v * t' },
-        relations: [{ id: 'rel1', fromKind: 'col', from: 'c1', toKind: 'col', to: 'c3', op: 'times' }],
+        relations: [
+          { id: 'rel1', fromKind: 'col', from: 'c1', toKind: 'col', to: 'c3', op: 'times' },
+          { id: 'rel2', fromKind: 'col', from: 'c2', toKind: 'col', to: 'c3', op: 'times' },
+        ],
         questionId: 'distance',
         assignments: { v: 'v', t: 't' },
         customQuestions: [],
