@@ -975,7 +975,7 @@ function initTriangle() {
 initInfo();
 initGeo();
 initTriangle();
-show(settings.screen || 'calc');
+show(TITLES[settings.screen] ? settings.screen : 'calc'); // настройка со старой версии могла указать удалённый экран
 applySubjectMode(settings.subject || 'school', { navigate: false });
 updateDisplay();
 void preprocess;
