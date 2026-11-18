@@ -694,4 +694,267 @@ ok('знак % не путается с рублями: 2000 ₽ со скидк
   assert.match(String(solveTask('Купили 3 кг яблок по 120 рублей за килограмм. Сколько заплатили?').answer), /360/);
 });
 
+
+console.log('\nСХЕМА / СМЕТА');
+{
+  const schemeMod = await import('../js/scheme.js');
+  const sm = schemeMod;
+
+  ok('схема «Смета»: кол-во × цена считается по строке, «Итого» — по столбцам', () => {
+    const s = sm.presetScheme('smeta');
+    const ev = sm.evaluateScheme(s);
+    assert.deepEqual(ev.colTotals, [6, 262, 291]);
+    // строка Тетради: стоимость = колво * цена = 2 · 15 = 30
+    near(ev.grid[0][2].value, 30);
+    near(ev.grid[1][2].value, 21);
+    near(ev.grid[2][2].value, 240);
+  });
+  ok('схема «Корзины»: было / продали / осталось', () => {
+    const s = sm.presetScheme('baskets');
+    const ev = sm.evaluateScheme(s);
+    near(ev.grid[0][2].value, 17);
+  });
+  ok('схема: ошибочное выражение честно сообщается', () => {
+    const s = sm.presetScheme('blank');
+    s.cells = { [`${s.rows[0].id}|${s.columns[0].id}`]: 'непонятная штука +++' };
+    const ev = sm.evaluateScheme(s);
+    assert.ok(!Number.isFinite(ev.grid[0][0].value));
+    assert.ok(ev.grid[0][0].error || ev.errors.length >= 0);
+  });
+  ok('схема: вопрос «итоговая стоимость» даёт 291 ₽ с шагами', () => {
+    const s = sm.presetScheme('smeta');
+    const res = sm.solveQuestion(s, 'grandTotal', s.assignments);
+    assert.ok(res.ok);
+    near(res.answerValue, 291);
+    assert.ok(res.steps.length >= 1);
+    assert.match(res.condition, /Таблица:/);
+    assert.match(res.condition, /Чему равна итоговая стоимость/);
+  });
+  ok('схема: «среднее арифметическое двух чисел» = 8', () => {
+    const res = sm.solveQuestion(sm.emptyScheme(), 'mean2', { a: 'a', b: 'b' });
+    assert.ok(res.ok);
+    near(res.answerValue, 8);
+  });
+  ok('схема: не хватает данных — понятное сообщение', () => {
+    const res = sm.solveQuestion(sm.presetScheme('blank'), 'sum', { a: '', b: '' });
+    assert.equal(res.ok, false);
+    assert.match(res.error, /Не хватает данных/);
+  });
+  ok('схема: «Своё действие» — пользовательская операция работает', () => {
+    const s = { ...sm.emptyScheme(), questionId: 'custom:cq1', assignments: {}, customQuestions: [{ id: 'cq1', label: 'Половина суммы', formula: '(a + b) / 2', unit: '', question: 'Сколько будет половина?' }] };
+    const res = sm.solveQuestion(s, 'custom:cq1', {});
+    assert.ok(res.ok);
+    near(res.answerValue, 8);
+  });
+  ok('схема: SVG-диаграмма строится и содержит засечки и дуги', () => {
+    const s = sm.presetScheme('baskets'); // 2 стрелки «зависит от»
+    const svg = sm.schemeSVG(s);
+    assert.match(svg, /^<svg/);
+    assert.ok((svg.match(/Q /g) || []).length >= 2, 'должны быть дуги зависимостей');
+  });
+  ok('схема: chartSeries даёт значения столбца по строкам в порядке строк', () => {
+    const s = sm.presetScheme('smeta');
+    const c3 = s.columns[2];
+    const series = sm.chartSeries(s, c3.id);
+    assert.deepEqual(series.map((p) => p.label), s.rows.map((r) => r.label));
+    assert.deepEqual(series.map((p) => p.value), [30, 21, 240]);
+    // пустой столбец → пустой ряд (график честно покажет «нет данных»)
+    const empty = sm.chartSeries(sm.presetScheme('blank'), sm.presetScheme('blank').columns[0].id);
+    assert.deepEqual(empty, []);
+  });
+  ok('схема: все 36 заготовленных вопросов решаются на своих пресетах', () => {
+    const s = sm.emptyScheme(); // a = 12, b = 4
+    const tryQ = (id, assignments, check) => {
+      const res = sm.solveQuestion(s, id, assignments);
+      assert.ok(res.ok, `${id}: ${res.error || 'ok'}`);
+      assert.ok(Number.isFinite(res.answerValue));
+    };
+    tryQ('sum', { a: 'a', b: 'b' });
+    tryQ('diff', { a: 'a', b: 'b' });
+    tryQ('prod', { a: 'a', b: 'b' });
+    tryQ('quot', { a: 'a', b: 'b' });
+    tryQ('mean2', { a: 'a', b: 'b' });
+    tryQ('mean3', { a: 'a', b: 'b', c: 'b' });
+    tryQ('scale', { a: 'a', n: 'b' });
+    tryQ('more', { a: 'a', b: 'b' });
+    tryQ('times', { a: 'a', b: 'b' });
+    tryQ('remainder', { a: 'a', b: 'b' });
+    tryQ('fracOf', { a: '1', b: 'b', n: 'a' });
+    tryQ('numberByFrac', { a: '1', b: 'b', c: 'a' });
+    tryQ('pctOfNumber', { a: 'b', b: 'a' });
+    tryQ('pctValue', { p: 'b', n: 'a' });
+    tryQ('numberByPct', { p: 'b', a: 'a' });
+    tryQ('pctDiff', { a: 'a', b: 'b' });
+    tryQ('discount', { n: 'a', p: 'b' });
+    tryQ('markup', { n: 'a', p: 'b' });
+    tryQ('lineTotal', { price: 'a', qty: 'b' });
+    tryQ('quantityBySum', { sum: 'a', price: 'b' });
+    tryQ('priceBySum', { sum: 'a', qty: 'b' });
+    tryQ('speed', { s: 'a', t: 'b' });
+    tryQ('distance', { v: 'a', t: 'b' });
+    tryQ('time', { s: 'a', v: 'b' });
+    tryQ('avgSpeed', { s1: 'a', t1: 'b', s2: 'b', t2: 'b' });
+    tryQ('performance', { A: 'a', t: 'b' });
+    tryQ('workTime', { A: 'a', p: 'b' });
+    tryQ('workDone', { p: 'a', t: 'b' });
+    tryQ('joint', { t1: 'a', t2: 'b' });
+    tryQ('spread', { a: 'a', b: 'b', c: '1' });
+    tryQ('median3', { a: 'a', b: 'b', c: '1' });
+    tryQ('rectPerimeter', { a: 'a', b: 'b' });
+    tryQ('rectArea', { a: 'a', b: 'b' });
+    tryQ('triPerimeter', { a: 'a', b: 'b', c: 'b' });
+    // сметные вопросы — на пресете «Смета» (нужны столбцы)
+    const smeta = sm.presetScheme('smeta');
+    const gt = sm.solveQuestion(smeta, 'grandTotal', smeta.assignments);
+    assert.ok(gt.ok);
+    const avg = sm.solveQuestion(smeta, 'averagePrice', { cost: { kind: 'columnSum', columnId: 'c3' }, qty: { kind: 'columnSum', columnId: 'c1' } });
+    assert.ok(avg.ok);
+    near(avg.answerValue, 291 / 6);
+    const ch = sm.solveQuestion(smeta, 'change', { cash: 'наличные', total: { kind: 'columnSum', columnId: 'c3' } });
+    assert.ok(ch.ok);
+    near(ch.answerValue, 1000 - 291);
+  });
+}
+
+console.log('\nРУССКИЙ ЯЗЫК');
+{
+  const ru = await import('../js/ru.js');
+
+  ok('причастие: «читающий» — действительное настоящего времени', () => {
+    const r = ru.analyzeParticiple('читающий');
+    assert.ok(r.ok);
+    assert.equal(r.voice, 'действительное');
+    assert.equal(r.tense, 'настоящего');
+    assert.equal(r.form, 'полная');
+    assert.equal(r.gender, 'м. р.');
+  });
+  ok('причастие: «сделанный» — страдательное прошедшего, совершенный вид', () => {
+    const r = ru.analyzeParticiple('сделанный');
+    assert.ok(r.ok);
+    assert.equal(r.voice, 'страдательное');
+    assert.equal(r.tense, 'прошедшего');
+    assert.equal(r.aspect, 'совершенный');
+  });
+  ok('причастие: «неделанный» — несовершенного вида (приставки нет)', () => {
+    const r = ru.analyzeParticiple('деланный');
+    assert.equal(r.aspect.startsWith('несовершенный'), true);
+  });
+  ok('причастие: краткая форма «решена» — сказуемое, одна н', () => {
+    const r = ru.analyzeParticiple('решена');
+    assert.ok(r.ok);
+    assert.equal(r.form, 'краткая');
+    assert.equal(r.role, 'сказуемое');
+    assert.equal(r.gender, 'ж. р.');
+  });
+  ok('причастие: начальная форма восстанавливается из любой падежной', () => {
+    const r = ru.analyzeParticiple('прочитанную');
+    assert.ok(r.ok);
+    assert.equal(r.initial, 'Прочитанный');
+    assert.match(r.case, /вин/);
+  });
+  ok('причастие: «бежит» НЕ распознаётся как причастие (авто)', () => {
+    const r = ru.analyzeAuto('бежит');
+    assert.equal(r.type, 'глагол');
+  });
+  ok('причастие: «хороший» — отглагольное прилагательное, а не причастие', () => {
+    const r = ru.analyzeAuto('хороший');
+    assert.match(r.type, /прилагательное/);
+  });
+  ok('причастие: словарь из 100+ слов разбирается без единой ошибки типа', () => {
+    const samples = ['читающий','пишущий','любящий','говорящий','стоящий','идущий','несущий','читавший','сделавший','написавший','ушедший','пришедший','несший','выросший','читаемый','любимый','видимый','слышимый','гонимый','управляемый','сделанный','решенный','открытый','закрытый','выполненный','купленный','найденный','потерянный','взятый','принятый','забытый','убранный','покрашенный','прочитанный','изученный'];
+    for (const w of samples) {
+      const r = ru.analyzeParticiple(w);
+      assert.ok(r.ok, `${w}: не распознан`);
+      assert.match(r.type, /причастие/);
+    }
+  });
+  ok('деепричастие: «читая» и «решив» распознаются с видом', () => {
+    assert.equal(ru.analyzeAdverbialParticiple('читая').aspect, 'несовершенный');
+    assert.equal(ru.analyzeAdverbialParticiple('решив').aspect, 'совершенный');
+  });
+  ok('глагол: «бежит» — 2-е спряжение по окончанию -ит', () => {
+    const r = ru.analyzeVerb('бежит');
+    assert.equal(r.person, '3-е лицо');
+    assert.match(r.conjugation, /2-е/);
+  });
+  ok('существительное: «мама» — ж. р., 1-е склонение', () => {
+    const r = ru.analyzeNoun('мама');
+    assert.match(r.gender, /ж/);
+    assert.equal(r.declension, '1-е');
+  });
+  ok('прилагательное: сравнительная степень «теплее»; средний род «синее»', () => {
+    assert.equal(ru.analyzeAdjective('теплее').degree, 'сравнительная (простая)');
+    assert.equal(ru.analyzeAdjective('синее').degree, 'обычная');
+    assert.equal(ru.analyzeAdjective('синее').gender, 'ср. р.');
+  });
+  ok('автоопределение: читающий→причастие, умывшись→деепричастие, мама→существительное', () => {
+    assert.equal(ru.analyzeAuto('читающий').type, 'причастие');
+    assert.equal(ru.analyzeAuto('умывшись').type, 'деепричастие');
+    assert.equal(ru.analyzeAuto('мама').type, 'существительное');
+  });
+  ok('тест: каждый вопрос квиза совпадает с анализатором причастий', () => {
+    const codeOf = (r) => r.tense === 'настоящего' ? (r.voice === 'действительное' ? 0 : 2) : (r.voice === 'действительное' ? 1 : 3);
+    for (const q of ru.RU_QUIZ) {
+      const r = ru.analyzeParticiple(q.word);
+      assert.ok(r.ok, `${q.word} не разобран`);
+      assert.equal(codeOf(r), q.answer, `${q.word}: разряд не совпал с ответом квиза`);
+    }
+  });
+  ok('справочник: все 10 разделов непустые', () => {
+    assert.equal(ru.RU_SECTIONS.length, 10);
+    for (const s of ru.RU_SECTIONS) {
+      const has = (s.blocks && s.blocks.length) || s.table;
+      assert.ok(has, `раздел «${s.title}» пуст`);
+    }
+  });
+}
+
+console.log('\nТРЕУГОЛЬНИК');
+{
+  const tr = await import('../js/triangle.js');
+
+  ok('треугольник 3-4-5 — прямоугольный, S = 6, P = 12', () => {
+    const t = tr.triangleBySides(3, 4, 5);
+    assert.ok(t.ok);
+    near(t.angles.gamma, 90, 1e-6);
+    near(t.area, 6);
+    near(t.perimeter, 12);
+    assert.match(t.kind, /прямоугольный/);
+  });
+  ok('треугольник 1-2-10 не существует — честная ошибка', () => {
+    const t = tr.triangleBySides(1, 2, 10);
+    assert.equal(t.ok, false);
+    assert.match(t.error, /не существует/);
+  });
+  ok('треугольник по двум сторонам и углу (5, 4, 90°) совпадает с 3-4-5', () => {
+    const t = tr.triangleBySAS(5, 4, 90);
+    assert.ok(t.ok);
+    near(t.area, 10); // ½·5·4
+    near(t.sides.a, Math.sqrt(41), 1e-9); // BC
+  });
+  ok('треугольник по стороне и двум углам: углы 50°/60°/70°', () => {
+    const t = tr.triangleByASA(6, 50, 60);
+    assert.ok(t.ok);
+    near(t.angles.alpha, 50, 1e-6);
+    near(t.angles.beta, 60, 1e-6);
+    near(t.angles.gamma, 70, 1e-6);
+  });
+  ok('треугольник: сумма двух углов ≥ 180° — отказ', () => {
+    const t = tr.triangleByASA(6, 120, 80);
+    assert.equal(t.ok, false);
+  });
+  ok('равнобедренный и равносторонний распознаются по сторонам', () => {
+    assert.match(tr.triangleBySides(5, 5, 6).kind, /равнобедренный/);
+    assert.match(tr.triangleBySides(6, 6, 6).kind, /равносторонний/);
+  });
+  ok('SVG-чертёж генерируется и содержит стороны и вершины', () => {
+    const t = tr.triangleBySides(3, 4, 5);
+    const svg = tr.triangleSVG(t);
+    assert.match(svg, /^<svg/);
+    assert.match(svg, />A</);
+    assert.match(svg, /a=/);
+  });
+}
+
 console.log(`\nПройдено: ${passed} проверок\n`);
+

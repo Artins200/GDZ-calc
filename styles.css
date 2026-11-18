@@ -566,3 +566,103 @@ details.more[open] > summary::before { transform: rotate(90deg); }
 .user-check { margin-top: 10px; padding: 9px 12px; border-radius: 11px; font-size: .86rem; font-weight: 600; }
 .user-check.ok { background: var(--ok-soft); color: var(--ok); border: 1px solid #1f4a3a; }
 .user-check.bad { background: #2a1a1a; color: var(--err); border: 1px solid #4a2222; }
+
+/* ===================== СХЕМА / СМЕТА ===================== */
+.chips button.active { background: var(--accent-soft); border-color: #4a3a1c; color: var(--accent); font-weight: 600; }
+.btn.small { padding: 7px 11px; font-size: .8rem; }
+.mini-label { display: inline-flex; align-items: center; gap: 7px; font-size: .8rem; color: var(--ink-2); cursor: pointer; }
+
+.scheme-vars { display: flex; flex-wrap: wrap; gap: 6px; }
+.var-chip {
+  display: inline-flex; align-items: center; gap: 7px; padding: 5px 8px 5px 10px;
+  border: 1px solid var(--line); border-radius: 9px; background: var(--surface-2);
+  font-size: .82rem; color: var(--ink-2); max-width: 100%;
+}
+.var-chip b { color: var(--ink); font-weight: 650; font-family: var(--mono); }
+.var-chip .var-val { color: var(--ok); font-family: var(--mono); font-size: .8em; }
+.var-chip .var-bad { color: var(--err); font-size: .78em; }
+.var-chip button {
+  border: none; background: none; color: var(--ink-3); cursor: pointer;
+  font-size: 1rem; line-height: 1; padding: 2px 4px; border-radius: 6px;
+}
+.var-chip button:hover { color: var(--err); background: #2a1a1a; }
+
+.scheme-grid-wrap { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--bg-2); }
+.scheme-table { border-collapse: collapse; width: 100%; min-width: 340px; font-size: .85rem; }
+.scheme-table th, .scheme-table td { border: 1px solid #2b3340; padding: 0; }
+.scheme-table thead th { background: #1c212b; padding: 6px 6px; vertical-align: top; }
+.scheme-table tbody th { background: #1a1f28; padding: 4px 6px; text-align: left; font-weight: 600; color: var(--ink); }
+.scheme-table .corner { color: var(--ink-3); font-size: .72rem; font-weight: 400; }
+.col-title-input, .col-unit-input, .row-label-input {
+  width: 100%; box-sizing: border-box; background: transparent; border: none;
+  color: var(--ink); font: inherit; font-size: .8rem; padding: 3px 4px; border-radius: 6px; min-width: 64px;
+}
+.col-unit-input { color: var(--ink-3); font-size: .7rem; }
+.col-title-input:focus, .col-unit-input:focus, .row-label-input:focus, .cell-input:focus { outline: none; background: #222835; }
+.cell {
+  position: relative; padding: 2px; vertical-align: top;
+}
+.cell-input {
+  width: 100%; box-sizing: border-box; background: transparent; border: none;
+  color: var(--ink); font-family: var(--mono); font-size: .84rem; padding: 5px 6px 1px; border-radius: 6px; min-width: 64px;
+}
+.cell-val { display: block; padding: 0 6px 5px; font-size: .68rem; color: var(--ok); font-family: var(--mono); }
+.cell-val.err { color: var(--err); font-size: .66rem; white-space: nowrap; max-width: 150px; overflow: hidden; text-overflow: ellipsis; }
+.scheme-table .total { background: #20190c; color: var(--accent); font-weight: 700; font-family: var(--mono); text-align: right; padding: 8px 10px !important; font-size: .85rem; }
+.scheme-table tfoot th { background: #20190c; color: var(--accent); text-align: left; padding: 8px 10px; font-size: .8rem; }
+.scheme-table tfoot td { background: #20190c; color: var(--accent); font-weight: 700; font-family: var(--mono); text-align: right; padding: 8px 10px; font-size: .85rem; }
+.scheme-tools { display: flex; flex-wrap: wrap; gap: 7px; align-items: center; margin-top: 10px; }
+.panel-head-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+.mini-select { flex: 0 0 auto; max-width: 46%; font-size: .85rem; padding: 7px 9px; }
+.scheme-chart { display: block; width: 100%; height: 190px; border: 1px solid var(--line); border-radius: 12px; background: #121519; }
+
+.scheme-diagram { border: 1px solid var(--line-soft); border-radius: 12px; background: var(--bg-2); padding: 6px; margin-bottom: 8px; }
+.scheme-diagram svg { width: 100%; height: auto; display: block; }
+.scheme-relations { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.rel-chip {
+  display: inline-flex; align-items: center; gap: 8px; padding: 5px 6px 5px 10px;
+  border: 1px solid #4a3a1c; border-radius: 9px; background: var(--accent-soft);
+  font-size: .8rem; color: var(--accent);
+}
+.rel-chip button { border: none; background: none; color: inherit; cursor: pointer; font-size: .95rem; opacity: .7; }
+.rel-chip button:hover { opacity: 1; }
+.scheme-custom-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.condition-block {
+  white-space: pre-wrap; font-family: var(--mono); font-size: .8rem; line-height: 1.5;
+  background: var(--bg-2); border: 1px solid var(--line-soft); border-radius: 10px;
+  padding: 10px 12px; color: var(--ink); max-height: 300px; overflow: auto;
+}
+.given-card { margin-bottom: 10px; border-left: 3px solid var(--accent); }
+
+/* ===================== РУССКИЙ ЯЗЫК ===================== */
+.ru-sec { border: 1px solid var(--line); border-radius: 12px; margin-top: 8px; background: var(--surface-2); overflow: hidden; }
+.ru-sec summary {
+  cursor: pointer; padding: 11px 13px; font-size: .88rem; font-weight: 600; color: var(--ink);
+  list-style: none; display: flex; align-items: center; gap: 9px;
+}
+.ru-sec summary::before { content: '›'; color: var(--accent); font-size: 1.1rem; transition: transform .18s ease; flex: none; }
+.ru-sec[open] summary::before { transform: rotate(90deg); }
+.ru-sec-body { padding: 2px 13px 13px; border-top: 1px solid var(--line-soft); font-size: .86rem; color: var(--ink-2); line-height: 1.55; }
+.ru-sec-body h4 { margin: 12px 0 4px; font-size: .8rem; color: var(--accent); text-transform: none; letter-spacing: .02em; }
+.ru-sec-body p { margin: 0 0 4px; white-space: pre-line; }
+.ru-table { width: 100%; border-collapse: collapse; margin-top: 8px; font-size: .8rem; }
+.ru-table th, .ru-table td { border: 1px solid var(--line); padding: 7px 9px; text-align: left; vertical-align: top; white-space: pre-line; }
+.ru-table th { background: #1c212b; color: var(--ink); }
+.ru-note { margin-top: 8px; font-size: .8rem; color: var(--warn); border-left: 3px solid #4a3a1c; padding: 6px 10px; background: rgba(255,180,107,.06); border-radius: 8px; }
+.parse-title { font-size: .82rem; color: var(--ink-3); margin-bottom: 6px; }
+.quiz-word { font-size: 1.6rem; font-weight: 800; text-align: center; padding: 12px 0 4px; letter-spacing: .02em; }
+.quiz-sub { text-align: center; color: var(--ink-3); font-size: .8rem; margin-bottom: 12px; }
+.quiz-options { display: grid; gap: 8px; }
+.quiz-options button {
+  font: inherit; text-align: left; padding: 11px 13px; border-radius: 11px; cursor: pointer;
+  border: 1px solid var(--line); background: var(--surface-2); color: var(--ink-2); font-size: .88rem;
+}
+.quiz-options button:hover { border-color: var(--accent); }
+.quiz-options button.right { border-color: #1f4a3a; background: var(--ok-soft); color: var(--ok); font-weight: 600; }
+.quiz-options button.wrong { border-color: #4a2222; background: #2a1a1a; color: var(--err); }
+.quiz-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 12px; }
+.quiz-score { font-size: .85rem; color: var(--ink-2); }
+
+/* ===================== ТРЕУГОЛЬНИК ===================== */
+#tri-download { margin-top: 8px; }
+.figure .tri-caption { margin-top: 8px; }

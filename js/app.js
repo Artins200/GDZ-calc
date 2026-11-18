@@ -9,6 +9,16 @@ import { solveInequality, longArithmetic, divideAngle } from './inequalities.js'
 import { classifyTask } from './classifier.js';
 import { INFO_UNITS, convertInfoSize, convertBase, parseInfoSize, solveItTask } from './it.js';
 import { GEO_TOOLS, solveGeoTask } from './geo.js';
+import { triangleBySides, triangleBySAS, triangleByASA, triangleSVG, triangleStats } from './triangle.js';
+import {
+  SCHEME_STORE, emptyScheme, presetScheme, evaluateScheme, QUESTION_GROUPS, QUESTIONS,
+  findQuestion, solveQuestion, schemeSVG, RELATION_OPS, PRESETS as SCHEME_PRESETS,
+  nid as schemeNid, chartSeries,
+} from './scheme.js';
+import {
+  analyzeAuto, analyzeParticiple, analyzeAdverbialParticiple, analyzeVerb, analyzeNoun, analyzeAdjective,
+  RU_SECTIONS, RU_QUIZ, RU_QUIZ_OPTIONS,
+} from './ru.js';
 import './grapher.js';
 
 const $ = (sel, root = document) => root.querySelector(sel);
@@ -53,12 +63,14 @@ const SCREENS = {
   graph: $('#screen-graph'),
   info: $('#screen-info'),
   geo: $('#screen-geo'),
+  scheme: $('#screen-scheme'),
+  ru: $('#screen-ru'),
   settings: $('#screen-settings'),
   ref: $('#screen-ref'),
 };
 const TITLES = {
   calc: 'Калькулятор', ineq: 'Неравенства', task: 'Задача', interval: 'Промежутки', graph: 'Графики',
-  info: 'Информатика', geo: 'Геометрия',
+  info: 'Информатика', geo: 'Геометрия', scheme: 'Схема', ru: 'Русский язык',
   settings: 'Настройки', ref: 'Справочник',
 };
 let current = 'calc';
@@ -73,6 +85,7 @@ function show(name) {
   window.scrollTo({ top: 0 });
   if (name === 'settings') renderSettings();
   if (name === 'ref') renderRef();
+  if (name === 'scheme') renderSchemeChart();
 }
 
 /* =========================================================================
@@ -485,13 +498,37 @@ const FAMILY_LABEL = {
   inequality: 'неравенство', parts: 'две части', steps: 'шаги',
 };
 
+/** «Дано — Найти» из условия задачи: ставим перед ответом, как в тетради. */
+function givenFindCard(sol) {
+  try {
+    const text = taskInput.value || '';
+    const entries = Object.entries(sol.inputs || {}).filter(([, v]) => typeof v === 'number' && Number.isFinite(v));
+    const questions = text.match(/[^.!?\n]*\?/g) || [];
+    const question = questions.length ? questions[questions.length - 1].trim() : '';
+    if (!entries.length && !question) return '';
+    const given = entries.map(([k, v]) => {
+      const lab = labelForVar(sol, k, v);
+      const unit = lab?.unit ? ` ${lab.unit}` : '';
+      return `<span>${esc(lab?.label || k)} = ${fmtPlain(v)}${esc(unit)}</span>`;
+    }).join('<br>');
+    return `<div class="card given-card">
+      <div class="card-title">Дано и найти</div>
+      <div class="card-part"><b>Дано:</b><br>${given || 'см. условие'}</div>
+      <div class="card-part"><b>Найти:</b><br>${esc(question || 'что нужно найти — см. условие')}</div>
+    </div>`;
+  } catch {
+    return '';
+  }
+}
+
 function renderTask(sol) {
   if (!sol.ok) {
     taskResult.innerHTML = `<div class="err">Не получилось распознать задачу. Укажите, что нужно найти: «найдите скорость», «сколько процентов», «решите уравнение».</div>`;
     return;
   }
 
-  let html = `<div class="answer">
+  let html = givenFindCard(sol);
+  html += `<div class="answer">
     <div class="answer-label">Ответ</div>
     <p class="answer-value">${esc(sol.answer)}</p>
   </div>`;
@@ -1076,10 +1113,739 @@ $('#formula-search').addEventListener('input', (e) => {
 });
 
 /* =========================================================================
+ * СХЕМА / СМЕТА
+ * ========================================================================= */
+function loadScheme() {
+  try {
+    const raw = localStorage.getItem(SCHEME_STORE);
+    if (!raw) return emptyScheme();
+    const p = JSON.parse(raw);
+    const base = emptyScheme();
+    return {
+      ...base, ...p,
+      vars: Array.isArray(p.vars) ? p.vars : base.vars,
+      columns: Array.isArray(p.columns) && p.columns.length ? p.columns : base.columns,
+      rows: Array.isArray(p.rows) && p.rows.length ? p.rows : base.rows,
+      cells: p.cells && typeof p.cells === 'object' ? p.cells : {},
+      relations: Array.isArray(p.relations) ? p.relations : [],
+      customQuestions: Array.isArray(p.customQuestions) ? p.customQuestions : [],
+      assignments: p.assignments && typeof p.assignments === 'object' ? p.assignments : {},
+    };
+  } catch { return emptyScheme(); }
+}
+let scheme = loadScheme();
+function saveScheme() { try { localStorage.setItem(SCHEME_STORE, JSON.stringify(scheme)); } catch { /* приватный режим */ } }
+
+const OP_SHORT = { plus: '+', minus: '−', times: '×', div: '÷', pct: '%', dep: '→' };
+
+function renderSchemeVars() {
+  const box = $('#scheme-vars');
+  if (!box) return;
+  if (!scheme.vars.length) {
+    box.innerHTML = '<span class="hint">Переменных пока нет — добавьте первую: например <b>a</b> = <b>12</b>.</span>';
+    return;
+  }
+  const ev = evaluateScheme(scheme);
+  box.innerHTML = scheme.vars.map((v, i) => {
+    const name = String(v?.name || '').trim();
+    const val = name ? ev.scope[name] : NaN;
+    const ok = Number.isFinite(val);
+    return `<span class="var-chip"><b>${esc(name || '?')}</b><span>= ${esc(String(v.expr ?? ''))}</span>
+      <span class="${ok ? 'var-val' : 'var-bad'}">${ok ? `→ ${esc(fmt(val))}` : 'ошибка'}</span>
+      <button type="button" data-var-del="${i}" aria-label="Удалить переменную">×</button></span>`;
+  }).join('');
+}
+
+function renderSchemeGrid() {
+  const wrap = $('#scheme-grid');
+  if (!wrap) return;
+  const ev = evaluateScheme(scheme);
+  const showSumCol = !!scheme.showSumCol, showSumRow = !!scheme.showSumRow;
+  let html = '<table class="scheme-table"><thead><tr><th class="corner">строка ↓<br>столбец →</th>';
+  scheme.columns.forEach((c, ci) => {
+    html += `<th><input class="col-title-input" data-col-title="${ci}" value="${esc(c.title)}" placeholder="Столбец ${ci + 1}" autocomplete="off" spellcheck="false"><input class="col-unit-input" data-col-unit="${ci}" value="${esc(c.unit || '')}" placeholder="ед. (шт, ₽…)" autocomplete="off" spellcheck="false"></th>`;
+  });
+  if (showSumCol) html += '<th>Всего</th>';
+  html += '</tr></thead><tbody>';
+  scheme.rows.forEach((row, ri) => {
+    html += `<tr><th><input class="row-label-input" data-row-label="${ri}" value="${esc(row.label)}" placeholder="Строка ${ri + 1}" autocomplete="off" spellcheck="false"></th>`;
+    scheme.columns.forEach((col, ci) => {
+      const cellVal = ev.grid[ri][ci];
+      const raw = scheme.cells[`${row.id}|${col.id}`] ?? '';
+      const bad = raw.trim().length > 0 && !Number.isFinite(cellVal.value);
+      const shown = Number.isFinite(cellVal.value) ? fmt(cellVal.value) : '';
+      html += `<td class="cell"><input class="cell-input" data-cell="${ri}:${ci}" value="${esc(raw)}" placeholder="0" autocomplete="off" spellcheck="false">
+        <span class="cell-val${bad ? ' err' : ''}" data-val="${ri}:${ci}">${bad ? esc(cellVal.error || 'ошибка') : esc(shown)}</span></td>`;
+    });
+    if (showSumCol) html += `<td class="total" data-total="row:${ri}">${fmt(ev.rowTotals[ri])}</td>`;
+    html += '</tr>';
+  });
+  if (showSumRow) {
+    const grand = ev.colTotals.reduce((s, v) => s + v, 0);
+    html += '<tfoot><tr><th>Итого</th>' + ev.colTotals.map((t, ci) => `<td data-total="col:${ci}">${fmt(t)}</td>`).join('')
+      + (showSumCol ? `<td data-total="grand">${fmt(grand)}</td>` : '') + '</tr></tfoot>';
+  }
+  html += '</tbody></table>';
+  wrap.innerHTML = html;
+  const errBox = $('#scheme-errors');
+  const errs = ev.errors || [];
+  errBox.hidden = !errs.length;
+  errBox.innerHTML = errs.length ? errs.map((e) => `<div>${esc(e)}</div>`).join('') : '';
+}
+
+/** Обновление ТОЛЬКО вычисленных значений (таблица не пересобирается — фокус не теряется). */
+function refreshSchemeComputed() {
+  const wrap = $('#scheme-grid');
+  if (!wrap) return;
+  const ev = evaluateScheme(scheme);
+  scheme.rows.forEach((row, ri) => {
+    scheme.columns.forEach((col, ci) => {
+      const span = wrap.querySelector(`[data-val="${ri}:${ci}"]`);
+      if (!span) return;
+      const raw = String(scheme.cells[`${row.id}|${col.id}`] ?? '');
+      const cellVal = ev.grid[ri][ci];
+      const bad = raw.trim().length > 0 && !Number.isFinite(cellVal.value);
+      span.textContent = bad ? (cellVal.error || 'ошибка') : (Number.isFinite(cellVal.value) ? fmt(cellVal.value) : '');
+      span.classList.toggle('err', bad);
+    });
+  });
+  scheme.rows.forEach((row, ri) => {
+    const cell = wrap.querySelector(`[data-total="row:${ri}"]`);
+    if (cell) cell.textContent = fmt(ev.rowTotals[ri]);
+  });
+  ev.colTotals.forEach((t, ci) => {
+    const cell = wrap.querySelector(`[data-total="col:${ci}"]`);
+    if (cell) cell.textContent = fmt(t);
+  });
+  const grand = wrap.querySelector('[data-total="grand"]');
+  if (grand) grand.textContent = fmt(ev.colTotals.reduce((s, v) => s + v, 0));
+  const errBox = $('#scheme-errors');
+  const errs = ev.errors || [];
+  errBox.hidden = !errs.length;
+  errBox.innerHTML = errs.length ? errs.map((e) => `<div>${esc(e)}</div>`).join('') : '';
+  renderSchemeVars();
+  renderSchemeDiagram();
+  renderSchemeChart();
+}
+
+function renderSchemeDiagram() {
+  const box = $('#scheme-diagram');
+  if (!box) return;
+  box.innerHTML = schemeSVG(scheme);
+}
+
+/* График по таблице: столбчатая диаграмма выбранного столбца по строкам (офлайн, canvas). */
+let schemeChartCol = null;
+function drawSchemeChart(canvas, series, unit) {
+  const ctx = canvas.getContext('2d');
+  const d = devicePixelRatio || 1;
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  canvas.width = Math.max(1, Math.floor(w * d));
+  canvas.height = Math.max(1, Math.floor(h * d));
+  ctx.setTransform(d, 0, 0, d, 0, 0);
+  ctx.clearRect(0, 0, w, h);
+  ctx.fillStyle = '#121519';
+  ctx.fillRect(0, 0, w, h);
+  if (!series.length) {
+    ctx.fillStyle = '#8b94a0';
+    ctx.font = '13px system-ui';
+    ctx.fillText('Нет числовых данных — заполните ячейки таблицы', 14, h / 2);
+    return;
+  }
+  const values = series.map((s) => s.value);
+  const maxV = Math.max(...values, 0), minV = Math.min(...values, 0);
+  const range = (maxV - minV) || 1;
+  const labelW = Math.min(130, Math.max(70, Math.floor(w * 0.32)));
+  const valueW = 56;
+  const pad = { left: labelW + 10, right: valueW + 8, top: 10, bottom: 10 };
+  const plotW = Math.max(20, w - pad.left - pad.right);
+  const zeroX = pad.left + ((0 - minV) / range) * plotW;
+  const xOf = (v) => pad.left + ((v - minV) / range) * plotW;
+  // нулевая линия
+  ctx.strokeStyle = '#3a424b';
+  ctx.lineWidth = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(zeroX, 4);
+  ctx.lineTo(zeroX, h - 4);
+  ctx.stroke();
+  const rowH = (h - pad.top - pad.bottom) / series.length;
+  const barH = Math.min(26, Math.max(9, rowH * 0.6));
+  series.forEach((s, i) => {
+    const cy = pad.top + rowH * (i + 0.5);
+    const x0 = Math.min(zeroX, xOf(s.value));
+    const bw = Math.max(2, Math.abs(xOf(s.value) - zeroX));
+    // подпись строки (слева)
+    ctx.fillStyle = '#c7cdd5';
+    ctx.font = '12px system-ui';
+    const label = s.label.length > 16 ? `${s.label.slice(0, 15)}…` : s.label;
+    ctx.textAlign = 'right';
+    ctx.fillText(label, pad.left - 8, cy + 4);
+    // бар
+    ctx.fillStyle = '#ff9f0a';
+    ctx.beginPath();
+    if (typeof ctx.roundRect === 'function') ctx.roundRect(x0, cy - barH / 2, bw, barH, 3);
+    else ctx.rect(x0, cy - barH / 2, bw, barH);
+    ctx.fill();
+    // значение
+    ctx.fillStyle = '#ffcf8a';
+    ctx.font = '11px ui-monospace, monospace';
+    ctx.textAlign = 'left';
+    const valText = `${fmt(s.value)}${unit ? ` ${unit}` : ''}`;
+    ctx.fillText(valText, Math.min(w - valueW, x0 + bw + 6), cy + 4);
+  });
+  ctx.textAlign = 'left';
+}
+function renderSchemeChart() {
+  const canvas = $('#scheme-chart-canvas');
+  const sel = $('#scheme-chart-col');
+  if (!canvas || !sel) return;
+  const cols = scheme.columns;
+  if (!cols.some((c) => c.id === schemeChartCol)) schemeChartCol = cols[0]?.id || null;
+  const want = cols.map((c) => c.id).join('|');
+  if (sel.dataset.cols !== want) {
+    sel.innerHTML = cols.map((c, i) => `<option value="${esc(c.id)}">${esc(c.title || `Столбец ${i + 1}`)}</option>`).join('');
+    sel.dataset.cols = want;
+  }
+  if (schemeChartCol && sel.value !== schemeChartCol) sel.value = schemeChartCol;
+  const col = cols.find((c) => c.id === schemeChartCol);
+  const series = schemeChartCol ? chartSeries(scheme, schemeChartCol) : [];
+  if (canvas.clientWidth < 20) return; // экран скрыт — перерисуем при показе
+  drawSchemeChart(canvas, series, col?.unit || '');
+}
+
+function schemeTargetOptions() {
+  const opts = [];
+  for (const v of scheme.vars) {
+    const name = String(v?.name || '').trim();
+    if (name) opts.push({ kind: 'var', id: name, label: `переменная «${name}»` });
+  }
+  scheme.columns.forEach((c, ci) => {
+    opts.push({ kind: 'col', id: c.id, label: `столбец «${String(c.title || `Столбец ${ci + 1}`).trim()}»` });
+  });
+  return opts;
+}
+
+function renderSchemeRelations() {
+  const fromSel = $('#scheme-rel-from'), toSel = $('#scheme-rel-to'), opSel = $('#scheme-rel-op');
+  if (!fromSel || !toSel || !opSel) return;
+  const opts = schemeTargetOptions();
+  const optHtml = opts.map((o) => `<option value="${o.kind}:${esc(o.id)}">${esc(o.label)}</option>`).join('');
+  const prevFrom = fromSel.value, prevTo = toSel.value;
+  fromSel.innerHTML = optHtml; toSel.innerHTML = optHtml;
+  opSel.innerHTML = RELATION_OPS.map((o) => `<option value="${o.id}">${esc(o.label)}</option>`).join('');
+  if ([...fromSel.options].some((o) => o.value === prevFrom)) fromSel.value = prevFrom;
+  if ([...toSel.options].some((o) => o.value === prevTo)) toSel.value = prevTo;
+  else if (toSel.options.length > 1) toSel.selectedIndex = 1;
+  const label = (kind, id) => opts.find((o) => o.kind === kind && o.id === id)?.label || id;
+  $('#scheme-relations').innerHTML = (scheme.relations || []).map((rel) =>
+    `<span class="rel-chip">${esc(label(rel.fromKind, rel.from))} <b>${esc(OP_SHORT[rel.op] || rel.op)}</b> ${esc(label(rel.toKind, rel.to))}<button type="button" data-rel-del="${esc(rel.id)}" aria-label="Удалить стрелку">×</button></span>`
+  ).join('') || '<span class="hint">Стрелок пока нет — добавьте первую выше.</span>';
+}
+
+function renderSchemeQuestions() {
+  const box = $('#scheme-questions');
+  if (!box) return;
+  const group = scheme.group;
+  const builtin = QUESTIONS.filter((q) => q.group === group);
+  const custom = (scheme.customQuestions || []).map((d) => findQuestion(scheme, `custom:${d.id}`)).filter(Boolean);
+  const list = [...builtin, ...custom];
+  box.innerHTML = list.map((q) =>
+    `<button type="button" data-qid="${esc(q.id)}" class="${scheme.questionId === q.id ? 'active' : ''}">${esc(q.label)}</button>`
+  ).join('') || '<span class="hint">В этой группе пока пусто — добавьте «Своё действие» ниже.</span>';
+  renderSchemeOperands();
+  renderSchemeCustomList();
+}
+
+function renderSchemeOperands() {
+  const box = $('#scheme-operands');
+  if (!box) return;
+  const q = findQuestion(scheme, scheme.questionId);
+  if (!q) { box.innerHTML = ''; return; }
+  if (!q.operands?.length) {
+    box.innerHTML = '<p class="hint" style="grid-column:1/-1">Данные берутся из таблицы и переменных — укажите их выше.</p>';
+    return;
+  }
+  box.innerHTML = q.operands.map((op) => {
+    const cur = scheme.assignments[op.key];
+    if (op.kind === 'columnSum') {
+      if (!cur?.columnId || !scheme.columns.some((c) => c.id === cur.columnId)) { scheme.assignments[op.key] = { kind: 'columnSum', columnId: scheme.columns[0]?.id }; saveScheme(); }
+      const columnId = scheme.assignments[op.key].columnId;
+      const sel = scheme.columns.map((c) => `<option value="${esc(c.id)}" ${c.id === columnId ? 'selected' : ''}>Σ «${esc(c.title || 'без названия')}»</option>`).join('');
+      return `<div class="field"><label><span>${esc(op.label)}</span></label><select class="input" data-op="${esc(op.key)}">${sel}</select></div>`;
+    }
+    if (op.kind === 'rowSum') {
+      if (!cur?.rowId || !scheme.rows.some((r) => r.id === cur.rowId)) { scheme.assignments[op.key] = { kind: 'rowSum', rowId: scheme.rows[0]?.id }; saveScheme(); }
+      const rowId = scheme.assignments[op.key].rowId;
+      const sel = scheme.rows.map((r) => `<option value="${esc(r.id)}" ${r.id === rowId ? 'selected' : ''}>Σ «${esc(r.label || 'строка')}»</option>`).join('');
+      return `<div class="field"><label><span>${esc(op.label)}</span></label><select class="input" data-op="${esc(op.key)}">${sel}</select></div>`;
+    }
+    const val = typeof cur === 'string' ? cur : (cur?.src ?? '');
+    return `<div class="field"><label><span>${esc(op.label)}</span></label><input type="text" class="input" data-op="${esc(op.key)}" value="${esc(val)}" placeholder="${esc(op.hint || 'переменная или выражение')}" autocomplete="off" spellcheck="false"></div>`;
+  }).join('');
+}
+
+function renderSchemeCustomList() {
+  const box = $('#scheme-custom-list');
+  if (!box) return;
+  const items = scheme.customQuestions || [];
+  box.innerHTML = items.map((d) =>
+    `<span class="rel-chip" style="border-color:var(--line);background:var(--surface-2);color:var(--ink-2)">${esc(d.label)} <span class="mono" style="color:var(--accent)">${esc(d.formula)}</span><button type="button" data-custom-del="${esc(d.id)}" aria-label="Удалить">×</button></span>`
+  ).join('');
+}
+
+function renderSchemeAll() {
+  renderSchemeVars();
+  renderSchemeGrid();
+  renderSchemeDiagram();
+  renderSchemeChart();
+  renderSchemeRelations();
+  renderSchemeQuestions();
+  const groupSel = $('#scheme-group');
+  if (groupSel && groupSel.value !== scheme.group) groupSel.value = scheme.group;
+  const titleInput = $('#scheme-title');
+  if (titleInput && titleInput.value !== (scheme.title || '')) titleInput.value = scheme.title || '';
+  const sumCol = $('#scheme-sum-col'), sumRow = $('#scheme-sum-row');
+  if (sumCol) sumCol.checked = !!scheme.showSumCol;
+  if (sumRow) sumRow.checked = !!scheme.showSumRow;
+}
+
+function schemeCardHtml(res) {
+  return renderCard({
+    title: res.question.label,
+    given: (res.given || []),
+    find: res.find,
+    formulas: res.formulas,
+    solution: res.steps,
+    answer: res.answer,
+  });
+}
+
+function showSchemeCondition(text) {
+  const wrap = $('#scheme-condition-wrap');
+  $('#scheme-condition').textContent = text;
+  wrap.hidden = false;
+}
+
+function initScheme() {
+  if (!$('#screen-scheme')) return;
+
+  $('#scheme-group').innerHTML = QUESTION_GROUPS.map((g) => `<option value="${g.id}">${esc(g.label)}</option>`).join('');
+  $('#scheme-group').value = scheme.group;
+  $('#scheme-presets').innerHTML = SCHEME_PRESETS.map((p) => `<button type="button" data-preset="${p.id}">${esc(p.label)}</button>`).join('');
+
+  // Перерисовка графика при изменении ширины экрана
+  let chartResize = null;
+  window.addEventListener('resize', () => {
+    clearTimeout(chartResize);
+    chartResize = setTimeout(() => renderSchemeChart(), 120);
+  });
+
+  // График по таблице: выбор столбца
+  $('#scheme-chart-col').addEventListener('change', (e) => { schemeChartCol = e.target.value; renderSchemeChart(); });
+
+  $('#scheme-group').addEventListener('change', (e) => { scheme.group = e.target.value; saveScheme(); renderSchemeQuestions(); });
+  $('#scheme-title').addEventListener('input', (e) => { scheme.title = e.target.value; saveScheme(); });
+  $('#scheme-presets').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-preset]');
+    if (!btn) return;
+    scheme = presetScheme(btn.dataset.preset);
+    saveScheme();
+    $('#scheme-out').innerHTML = '';
+    $('#scheme-condition-wrap').hidden = true;
+    renderSchemeAll();
+  });
+
+  // Переменные
+  $('#scheme-add-var').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const nameEl = $('#scheme-var-name'), exprEl = $('#scheme-var-expr');
+    const name = nameEl.value.trim();
+    const expr = exprEl.value.trim();
+    if (!name) return;
+    scheme.vars.push({ name, expr: expr || '0' });
+    nameEl.value = ''; exprEl.value = ''; nameEl.focus();
+    saveScheme();
+    refreshSchemeComputed();
+    renderSchemeRelations();
+    renderSchemeOperands();
+  });
+  $('#scheme-vars').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-var-del]');
+    if (!btn) return;
+    scheme.vars.splice(Number(btn.dataset.varDel), 1);
+    saveScheme();
+    refreshSchemeComputed();
+    renderSchemeRelations();
+    renderSchemeOperands();
+  });
+
+  // Таблица: редактирование без пересборки
+  const grid = $('#scheme-grid');
+  grid.addEventListener('input', (e) => {
+    const t = e.target;
+    if (t.dataset.colTitle !== undefined) scheme.columns[+t.dataset.colTitle].title = t.value;
+    else if (t.dataset.colUnit !== undefined) scheme.columns[+t.dataset.colUnit].unit = t.value;
+    else if (t.dataset.rowLabel !== undefined) scheme.rows[+t.dataset.rowLabel].label = t.value;
+    else if (t.dataset.cell !== undefined) {
+      const [ri, ci] = t.dataset.cell.split(':').map(Number);
+      scheme.cells[`${scheme.rows[ri].id}|${scheme.columns[ci].id}`] = t.value;
+    } else return;
+    saveScheme();
+    refreshSchemeComputed();
+  });
+  // смена названия столбца влияет на ссылки в таблице — пересобрать при смене фокуса
+  grid.addEventListener('change', (e) => {
+    if (e.target.dataset.colTitle !== undefined || e.target.dataset.rowLabel !== undefined) {
+      renderSchemeGrid(); renderSchemeDiagram(); renderSchemeRelations(); renderSchemeOperands();
+    }
+  });
+
+  $('#scheme-add-col').addEventListener('click', () => {
+    scheme.columns.push({ id: schemeNid('c'), title: `Столбец ${scheme.columns.length + 1}`, unit: '' });
+    saveScheme(); renderSchemeGrid(); renderSchemeDiagram(); renderSchemeRelations(); renderSchemeOperands();
+  });
+  $('#scheme-del-col').addEventListener('click', () => {
+    if (scheme.columns.length <= 1) return;
+    const col = scheme.columns.pop();
+    for (const key of Object.keys(scheme.cells)) if (key.endsWith(`|${col.id}`)) delete scheme.cells[key];
+    scheme.relations = (scheme.relations || []).filter((r) => !(r.fromKind === 'col' && r.from === col.id) && !(r.toKind === 'col' && r.to === col.id));
+    saveScheme(); renderSchemeGrid(); renderSchemeDiagram(); renderSchemeRelations(); renderSchemeOperands();
+  });
+  $('#scheme-add-row').addEventListener('click', () => {
+    scheme.rows.push({ id: schemeNid('r'), label: `Строка ${scheme.rows.length + 1}`, unit: '' });
+    saveScheme(); renderSchemeGrid(); renderSchemeDiagram(); renderSchemeRelations(); renderSchemeOperands();
+  });
+  $('#scheme-del-row').addEventListener('click', () => {
+    if (scheme.rows.length <= 1) return;
+    const row = scheme.rows.pop();
+    for (const key of Object.keys(scheme.cells)) if (key.startsWith(`${row.id}|`)) delete scheme.cells[key];
+    scheme.relations = (scheme.relations || []).filter((r) => !(r.fromKind === 'row' && r.from === row.id) && !(r.toKind === 'row' && r.to === row.id));
+    saveScheme(); renderSchemeGrid(); renderSchemeDiagram(); renderSchemeRelations(); renderSchemeOperands();
+  });
+  $('#scheme-sum-col').addEventListener('change', (e) => { scheme.showSumCol = e.target.checked; saveScheme(); renderSchemeGrid(); });
+  $('#scheme-sum-row').addEventListener('change', (e) => { scheme.showSumRow = e.target.checked; saveScheme(); renderSchemeGrid(); });
+
+  // Стрелки
+  $('#scheme-add-rel').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const fromSel = $('#scheme-rel-from'), toSel = $('#scheme-rel-to'), opSel = $('#scheme-rel-op');
+    const [fromKind, from] = String(fromSel.value).split(/:(.+)/);
+    const [toKind, to] = String(toSel.value).split(/:(.+)/);
+    if (!from || !to) return;
+    scheme.relations.push({ id: schemeNid('rel'), fromKind, from, toKind, to, op: opSel.value });
+    saveScheme(); renderSchemeRelations(); renderSchemeDiagram();
+  });
+  $('#scheme-relations').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-rel-del]');
+    if (!btn) return;
+    scheme.relations = scheme.relations.filter((r) => r.id !== btn.dataset.relDel);
+    saveScheme(); renderSchemeRelations(); renderSchemeDiagram();
+  });
+
+  // Вопросы
+  $('#scheme-questions').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-qid]');
+    if (!btn) return;
+    scheme.questionId = btn.dataset.qid;
+    saveScheme();
+    renderSchemeQuestions();
+  });
+  $('#scheme-operands').addEventListener('input', (e) => {
+    const t = e.target;
+    const key = t.dataset.op;
+    if (!key) return;
+    const q = findQuestion(scheme, scheme.questionId);
+    const op = q?.operands?.find((o) => o.key === key);
+    if (!op) return;
+    scheme.assignments[key] = op.kind === 'expr' ? t.value : { kind: op.kind, columnId: op.kind === 'columnSum' ? t.value : undefined, rowId: op.kind === 'rowSum' ? t.value : undefined };
+    saveScheme();
+  });
+  $('#scheme-operands').addEventListener('change', (e) => {
+    const t = e.target;
+    const key = t.dataset.op;
+    if (!key) return;
+    const q = findQuestion(scheme, scheme.questionId);
+    const op = q?.operands?.find((o) => o.key === key);
+    if (op && op.kind !== 'expr') {
+      scheme.assignments[key] = op.kind === 'columnSum' ? { kind: 'columnSum', columnId: t.value } : { kind: 'rowSum', rowId: t.value };
+      saveScheme();
+    }
+  });
+
+  const runSolve = () => {
+    const out = $('#scheme-out');
+    const res = solveQuestion(scheme, scheme.questionId, scheme.assignments);
+    if (!res.ok) { out.innerHTML = `<div class="err">${esc(res.error)}</div>`; return null; }
+    out.innerHTML = schemeCardHtml(res);
+    showSchemeCondition(res.condition);
+    return res;
+  };
+  $('#scheme-solve').addEventListener('click', runSolve);
+  $('#scheme-compose').addEventListener('click', () => {
+    const out = $('#scheme-out');
+    const res = solveQuestion(scheme, scheme.questionId, scheme.assignments);
+    if (!res.ok) { out.innerHTML = `<div class="err">${esc(res.error)}</div>`; return; }
+    showSchemeCondition(res.condition);
+    $('#scheme-condition-wrap').scrollIntoView?.({ block: 'nearest' });
+  });
+  $('#scheme-to-tasks').addEventListener('click', () => {
+    const res = solveQuestion(scheme, scheme.questionId, scheme.assignments);
+    if (!res.ok) { $('#scheme-out').innerHTML = `<div class="err">${esc(res.error)}</div>`; return; }
+    taskInput.value = res.condition;
+    show('task');
+    taskInput.focus();
+  });
+  $('#scheme-copy-condition').addEventListener('click', async (e) => {
+    const btn = e.currentTarget;
+    const text = $('#scheme-condition').textContent;
+    try {
+      await navigator.clipboard.writeText(text);
+      btn.textContent = 'Скопировано ✓';
+    } catch {
+      const range = document.createRange();
+      range.selectNodeContents($('#scheme-condition'));
+      const sel = window.getSelection();
+      sel.removeAllRanges(); sel.addRange(range);
+      try { document.execCommand('copy'); btn.textContent = 'Скопировано ✓'; } catch { btn.textContent = 'Выделите текст и скопируйте'; }
+      sel.removeAllRanges();
+    }
+    setTimeout(() => { btn.textContent = 'Копировать условие'; }, 1600);
+  });
+
+  // Своё действие
+  $('#scheme-add-custom').addEventListener('submit', (e) => {
+    e.preventDefault();
+    const labelEl = $('#scheme-custom-label'), formulaEl = $('#scheme-custom-formula'), unitEl = $('#scheme-custom-unit'), qEl = $('#scheme-custom-question');
+    const def = {
+      id: schemeNid('cq'),
+      label: labelEl.value.trim(),
+      formula: formulaEl.value.trim(),
+      unit: unitEl.value.trim(),
+      question: qEl.value.trim() || 'Что получится?',
+    };
+    if (!def.label || !def.formula) return;
+    scheme.customQuestions.push(def);
+    scheme.questionId = `custom:${def.id}`;
+    scheme.group = 'custom';
+    labelEl.value = ''; formulaEl.value = ''; unitEl.value = ''; qEl.value = '';
+    $('#scheme-group').value = 'custom';
+    saveScheme();
+    renderSchemeQuestions();
+  });
+  $('#scheme-custom-list').addEventListener('click', (e) => {
+    const btn = e.target.closest('[data-custom-del]');
+    if (!btn) return;
+    scheme.customQuestions = scheme.customQuestions.filter((d) => d.id !== btn.dataset.customDel);
+    if (scheme.questionId === `custom:${btn.dataset.customDel}`) scheme.questionId = 'sum';
+    saveScheme();
+    renderSchemeQuestions();
+  });
+
+  renderSchemeAll();
+}
+
+/* =========================================================================
+ * РУССКИЙ ЯЗЫК
+ * ========================================================================= */
+let ruMode = 'auto';
+
+function analyzeByMode(word) {
+  switch (ruMode) {
+    case 'participle': return analyzeParticiple(word);
+    case 'adverbial': return analyzeAdverbialParticiple(word);
+    case 'verb': return analyzeVerb(word);
+    case 'noun': return analyzeNoun(word);
+    case 'adjective': return analyzeAdjective(word);
+    default: return analyzeAuto(word);
+  }
+}
+
+function ruResultHtml(res) {
+  if (!res.ok) return `<div class="err">${esc(res.error)}</div>`;
+  const facts = [
+    ['Начальная форма', res.initial],
+    ['Разряд', res.voice],
+    ['Время', res.tense],
+    ['Вид', res.aspect],
+    ['Возвратность', res.reflexive === undefined ? null : (res.reflexive ? 'возвратное (-ся/-сь)' : 'невозвратное')],
+    ['Форма', res.form],
+    ['Род', res.gender],
+    ['Число', res.number],
+    ['Падеж', res.case],
+    ['Спряжение', res.conjugation],
+    ['Лицо', res.person],
+    ['Склонение', res.declension],
+    ['Степень сравнения', res.degree],
+    ['Роль в предложении', res.role],
+  ].filter(([, v]) => v != null && v !== '');
+  const factHtml = facts.map(([k, v]) => `<div class="card-part" style="margin-bottom:4px"><b>${esc(k)}:</b> ${esc(String(v))}</div>`).join('');
+  const warn = res.shortWarning ? `<div class="warn-box"><b>Как не перепутать</b><span>${esc(res.shortWarning)}</span></div>` : '';
+  const notes = (res.notes || []).length
+    ? `<div class="note-box">${res.notes.map((n) => `<p>${esc(n)}</p>`).join('')}</div>` : '';
+  const parse = (res.parse || []).length
+    ? `<div class="card-part" style="margin-top:10px"><b>Разбор как в тетради:</b><ol class="steps">${res.parse.map((p) => `<li>${esc(p)}</li>`).join('')}</ol></div>` : '';
+  return `<div class="card"><div class="card-title">«${esc(res.word)}» — ${esc(res.type || 'разбор')}${res.auto ? ' <span style="color:var(--ink-3);font-weight:400">(автоопределение)</span>' : ''}</div>${factHtml}${parse}${warn}${notes}</div>`;
+}
+
+const ruQuiz = { i: 0, score: 0, locked: false };
+
+function renderRuQuiz() {
+  const box = $('#ru-quiz');
+  if (!box) return;
+  if (ruQuiz.i >= RU_QUIZ.length) {
+    const total = RU_QUIZ.length;
+    const pct = Math.round((ruQuiz.score / total) * 100);
+    const verdict = pct === 100 ? 'Идеально! Разряды причастий — на отлично.' : pct >= 70 ? 'Хорошо! Ещё чуть-чуть — и пятёрка.' : 'Стоит повторить таблицу разрядов выше — и всё получится.';
+    box.innerHTML = `<div class="answer" style="margin-top:4px"><div class="answer-label">Результат</div>
+      <p class="answer-value" style="font-size:1.6rem">${ruQuiz.score} из ${total}</p>
+      <p class="answer-sub">${esc(verdict)}</p></div>
+      <button class="btn primary" id="ru-quiz-again" style="margin-top:10px">Пройти ещё раз</button>`;
+    return;
+  }
+  const q = RU_QUIZ[ruQuiz.i];
+  box.innerHTML = `<div class="quiz-word">${esc(q.word)}</div>
+    <div class="quiz-sub">Вопрос ${ruQuiz.i + 1} из ${RU_QUIZ.length} · верных ответов: ${ruQuiz.score}</div>
+    <div class="quiz-options">${RU_QUIZ_OPTIONS.map((o, i) => `<button type="button" data-opt="${i}">${esc(o)}</button>`).join('')}</div>
+    <div class="quiz-foot"><span class="quiz-score" id="ru-quiz-feedback">Какое это причастие?</span></div>`;
+}
+
+function initRu() {
+  if (!$('#screen-ru')) return;
+
+  $$('#ru-modes [data-mode]').forEach((btn) => btn.addEventListener('click', () => {
+    ruMode = btn.dataset.mode;
+    $$('#ru-modes [data-mode]').forEach((b) => b.classList.toggle('active', b === btn));
+  }));
+
+  const run = () => {
+    const word = $('#ru-word').value.trim();
+    const out = $('#ru-out');
+    if (!word) { out.innerHTML = '<div class="err">Введите слово.</div>'; return; }
+    out.innerHTML = ruResultHtml(analyzeByMode(word));
+  };
+  $('#ru-analyze').addEventListener('click', run);
+  $('#ru-word').addEventListener('keydown', (e) => { if (e.key === 'Enter') run(); });
+
+  // Справочник
+  $('#ru-ref').innerHTML = RU_SECTIONS.map((sec) => {
+    let body = '';
+    if (sec.table) {
+      body += `<table class="ru-table"><thead><tr>${sec.table.head.map((h) => `<th>${esc(h)}</th>`).join('')}</tr></thead><tbody>${sec.table.rows.map((r) => `<tr>${r.map((c) => `<td>${esc(c)}</td>`).join('')}</tr>`).join('')}</tbody></table>`;
+    }
+    for (const b of sec.blocks || []) {
+      body += `<h4>${esc(b.h)}</h4>${b.p ? `<p>${esc(b.p)}</p>` : ''}`;
+    }
+    if (sec.note) body += `<div class="ru-note">${esc(sec.note)}</div>`;
+    return `<details class="ru-sec"><summary>${esc(sec.title)}</summary><div class="ru-sec-body">${body}</div></details>`;
+  }).join('');
+
+  // Тест
+  $('#ru-quiz').addEventListener('click', (e) => {
+    const again = e.target.closest('#ru-quiz-again');
+    if (again) { ruQuiz.i = 0; ruQuiz.score = 0; ruQuiz.locked = false; renderRuQuiz(); return; }
+    const opt = e.target.closest('[data-opt]');
+    if (!opt || ruQuiz.locked) return;
+    const chosen = Number(opt.dataset.opt);
+    const q = RU_QUIZ[ruQuiz.i];
+    ruQuiz.locked = true;
+    const buttons = $$('#ru-quiz [data-opt]');
+    buttons.forEach((b) => {
+      const i = Number(b.dataset.opt);
+      if (i === q.answer) b.classList.add('right');
+      else if (i === chosen) b.classList.add('wrong');
+    });
+    const fb = $('#ru-quiz-feedback');
+    if (chosen === q.answer) { ruQuiz.score += 1; fb.textContent = 'Верно!'; fb.style.color = 'var(--ok)'; }
+    else { fb.textContent = `Неверно: это ${RU_QUIZ_OPTIONS[q.answer]}.`; fb.style.color = 'var(--err)'; }
+    const foot = $('#ru-quiz .quiz-foot');
+    const next = document.createElement('button');
+    next.className = 'btn primary';
+    next.id = 'ru-quiz-next';
+    next.textContent = ruQuiz.i + 1 >= RU_QUIZ.length ? 'К результату →' : 'Дальше →';
+    foot.appendChild(next);
+    next.addEventListener('click', () => { ruQuiz.i += 1; ruQuiz.locked = false; renderRuQuiz(); }, { once: true });
+  });
+  renderRuQuiz();
+}
+
+/* =========================================================================
+ * ТРЕУГОЛЬНИК (внутри «Геометрия»)
+ * ========================================================================= */
+const TRI_FIELDS = {
+  sss: [['a', 'Сторона a (против ∠A)', '4'], ['b', 'Сторона b (против ∠B)', '5'], ['c', 'Сторона c (против ∠C)', '6']],
+  sas: [['b', 'Сторона AC (b)', '5'], ['c', 'Сторона AB (c)', '4'], ['A', 'Угол ∠A между ними, °', '60']],
+  asa: [['c', 'Сторона AB (c)', '6'], ['A', 'Угол ∠A, °', '50'], ['B', 'Угол ∠B, °', '60']],
+};
+let lastTriangleSVG = '';
+
+function renderTriFields() {
+  const mode = $('#tri-mode')?.value || 'sss';
+  $('#tri-fields').innerHTML = TRI_FIELDS[mode].map(([key, label, def]) =>
+    `<div class="field"><label for="tri-${key}"><span>${esc(label)}</span></label><input type="text" id="tri-${key}" data-tri-field="${key}" value="${esc(def)}" inputmode="decimal" autocomplete="off"></div>`
+  ).join('');
+}
+
+function initTriangle() {
+  if (!$('#tri-mode')) return;
+  const triOut = $('#tri-out');
+  const download = $('#tri-download');
+
+  const draw = () => {
+    const mode = $('#tri-mode').value;
+    const val = {};
+    $$('#tri-fields [data-tri-field]').forEach((inp) => { val[inp.dataset.triField] = parseNum(inp.value); });
+    let tri = null;
+    if (mode === 'sss') tri = triangleBySides(val.a, val.b, val.c);
+    else if (mode === 'sas') tri = triangleBySAS(val.b, val.c, val.A);
+    else tri = triangleByASA(val.c, val.A, val.B);
+    if (!tri?.ok) {
+      triOut.innerHTML = `<div class="err">${esc(tri?.error || 'Не удалось построить треугольник.')}</div>`;
+      download.hidden = true;
+      lastTriangleSVG = '';
+      return;
+    }
+    lastTriangleSVG = triangleSVG(tri);
+    const stats = triangleStats(tri).map((t) => `<li>${esc(t)}</li>`).join('');
+    triOut.innerHTML = `${lastTriangleSVG}<div class="note-box tri-caption"><p style="margin-bottom:4px"><b>Чертёж идеальный — рисуйте по нему.</b></p><ol class="steps">${stats}</ol></div>`;
+    download.hidden = false;
+  };
+
+  $('#tri-mode').addEventListener('change', () => { renderTriFields(); draw(); });
+  $('#tri-draw').addEventListener('click', draw);
+  $('#tri-fields').addEventListener('keydown', (e) => { if (e.key === 'Enter') draw(); });
+  download.addEventListener('click', () => {
+    if (!lastTriangleSVG) return;
+    try {
+      const blob = new Blob([lastTriangleSVG], { type: 'image/svg+xml' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'treugolnik.svg';
+      a.click();
+      setTimeout(() => URL.revokeObjectURL(url), 4000);
+    } catch { /* скачивание недоступно — SVG виден на экране */ }
+  });
+  $$('[data-tri]').forEach((btn) => btn.addEventListener('click', () => {
+    const [mode, nums] = btn.dataset.tri.split(':');
+    $('#tri-mode').value = mode;
+    renderTriFields();
+    const parts = nums.split(',');
+    $$('#tri-fields [data-tri-field]').forEach((inp, i) => { inp.value = parts[i] ?? ''; });
+    draw();
+  }));
+
+  renderTriFields();
+  draw();
+}
+
+/* =========================================================================
  * СТАРТ
  * ========================================================================= */
 initInfo();
 initGeo();
+initScheme();
+initRu();
+initTriangle();
 show(settings.screen || 'calc');
 applySubjectMode(settings.subject || 'school', { navigate: false });
 updateDisplay();
