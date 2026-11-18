@@ -7,7 +7,12 @@
   "scripts": {
     "start": "node server.mjs",
     "dev": "node server.mjs",
-    "test": "node tests/smoke.mjs && node tests/smeta.mjs",
-    "test:browser": "node tests/browser.mjs"
+    "test": "node tests/smoke.mjs && node tests/smeta.mjs && node tests/browser.mjs",
+    "test:browser": "node tests/browser.mjs",
+    "test:core": "node tests/smoke.mjs",
+    "test:smeta": "node tests/smeta.mjs"
+  },
+  "devDependencies": {
+    "jsdom": "^31.0.1"
   }
 }

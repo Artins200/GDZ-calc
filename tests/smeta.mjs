@@ -6,6 +6,7 @@ import { readFileSync } from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { dirname, join } from 'node:path';
 import { JSDOM, VirtualConsole } from 'jsdom';
+import nodeAssert from 'node:assert/strict';
 
 const root = join(dirname(fileURLToPath(import.meta.url)), '..');
 const html = readFileSync(join(root, 'smeta.html'), 'utf8');
@@ -142,6 +143,106 @@ ok('«сколько всего?» на смете → 291', () => {
 ok('«сколько стоимость в книге?» → 240', () => {
   const r = ask('сколько стоимость в книге?');
   assert(r.ok && r.text.includes('240'), `ответ не 240: ${r.text}`);
+});
+
+
+console.log('\nSMETA.HTML — КРАЕВЫЕ СЛУЧАИ (по результатам ревью)');
+ok('max(2, 5) с запятой-аргументом = 5', () => {
+  nodeAssert.equal(window.__smeta.evaluateExpr('max(2, 5)', {}), 5);
+  nodeAssert.equal(window.__smeta.evaluateExpr('min(2, 5)', {}), 2);
+  nodeAssert.equal(window.__smeta.evaluateExpr('avg(2, 4, 6)', {}), 4);
+});
+ok('неявное умножение: 2a, 2(3), (1+2)(3+4)', () => {
+  nodeAssert.equal(window.__smeta.evaluateExpr('2a', { a: 3 }), 6);
+  nodeAssert.equal(window.__smeta.evaluateExpr('2(3)', {}), 6);
+  nodeAssert.equal(window.__smeta.evaluateExpr('(1+2)(3+4)', {}), 21);
+  nodeAssert.equal(window.__smeta.evaluateExpr('2(a + 1)', { a: 4 }), 10);
+});
+ok('научная нотация 1e3 и тысячи «1 000»', () => {
+  nodeAssert.equal(window.__smeta.evaluateExpr('1e3', {}), 1000);
+  nodeAssert.equal(window.__smeta.evaluateExpr('2,5e-1 + 1', {}), 1.25);
+  nodeAssert.equal(window.__smeta.evaluateExpr('1 000 + 2', {}), 1002);
+  nodeAssert.equal(window.__smeta.evaluateExpr('1 000 000', {}), 1000000);
+});
+ok('mod и проценты: 17 mod 5 = 2; 50 % = 0,5', () => {
+  nodeAssert.equal(window.__smeta.evaluateExpr('17 mod 5', {}), 2);
+  nodeAssert.equal(window.__smeta.evaluateExpr('50 %', {}), 0.5);
+  nodeAssert.equal(window.__smeta.evaluateExpr('200 * 10 %', {}), 20);
+});
+ok('степень право-ассоциативна; унарный минус ниже ^: -2^2 = -4', () => {
+  nodeAssert.equal(window.__smeta.evaluateExpr('2^3^2', {}), 512);
+  nodeAssert.equal(window.__smeta.evaluateExpr('-2^2', {}), -4);
+  nodeAssert.equal(window.__smeta.evaluateExpr('2^-1', {}), 0.5);
+});
+ok('деление на ноль — ошибка, а не Infinity', () => {
+  nodeAssert.throws(() => window.__smeta.evaluateExpr('1 / 0', {}), /ноль/);
+});
+ok('переменные считаются топологически: a = b + 1 при b ниже — работает', () => {
+  const ev = window.__smeta.evaluateCells({
+    title: 't', vars: [{ name: 'a', expr: 'b + 1' }, { name: 'b', expr: '2' }],
+    columns: [{ id: 'c1', title: 'x', unit: '' }], rows: [{ id: 'r1', label: 'строка' }],
+    cells: {}, relations: [], showSumCol: true, showSumRow: true,
+  });
+  nodeAssert.equal(ev.scope.a, 3);
+  nodeAssert.equal(ev.errors.length, 0);
+});
+ok('цикл в переменных — честная ошибка, зависимая ячейка показывает её', () => {
+  const ev = window.__smeta.evaluateCells({
+    title: 't', vars: [{ name: 'a', expr: 'b + 1' }, { name: 'b', expr: 'a + 1' }],
+    columns: [{ id: 'c1', title: 'x', unit: '' }], rows: [{ id: 'r1', label: 'строка' }],
+    cells: { 'r1|c1': 'a * 2' }, relations: [], showSumCol: true, showSumRow: true,
+  });
+  nodeAssert.ok(ev.errors.some((e) => /[Цц]икл/.test(e)), 'нет сообщения о цикле');
+  nodeAssert.ok(ev.grid[0][0].error, 'ячейка не показала ошибку');
+  nodeAssert.ok(ev.colBad[0] === 1, 'столбец не помечен как непосчитанный');
+});
+ok('сломанная переменная (1/0) не становится нулём в зависимой ячейке', () => {
+  const ev = window.__smeta.evaluateCells({
+    title: 't', vars: [{ name: 'a', expr: '1 / 0' }],
+    columns: [{ id: 'c1', title: 'x', unit: '' }], rows: [{ id: 'r1', label: 'строка' }],
+    cells: { 'r1|c1': 'a + 1' }, relations: [], showSumCol: true, showSumRow: true,
+  });
+  nodeAssert.ok(ev.grid[0][0].error, 'ячейка считается вместо ошибки');
+  nodeAssert.notEqual(ev.grid[0][0].value, 1, 'зависимая ячейка получила 1 (NaN→0)');
+});
+ok('«на сколько больше сделали во второй день, чем в первый?» → 15', () => {
+  click('#preset-days'); // сброс к 120 / 135 / 128
+  const r = ask('на сколько больше сделали во второй день, чем в первый?');
+  assert(r.ok, r.text);
+  assert(r.text.includes('15'), `ожидалось 15: ${r.text}`);
+});
+ok('спорные столбцы — вопрос-уточнение, а не тихая сумма', () => {
+  click('#preset-days');
+  const colTitle = $('[data-col-title="2"]'); // «брак» → тоже «сделали»
+  colTitle.value = 'сделали';
+  colTitle.dispatchEvent(new window.Event('input', { bubbles: true }));
+  colTitle.dispatchEvent(new window.Event('change', { bubbles: true }));
+  const r = ask('сколько сделали в первый день?');
+  assert(!r.ok, 'должно быть уточнение');
+  assert(/[Уу]точните/.test(r.text), `нет уточнения: ${r.text}`);
+  // возвращаем как было
+  const back = $('[data-col-title="2"]');
+  back.value = 'брак';
+  back.dispatchEvent(new window.Event('input', { bubbles: true }));
+  back.dispatchEvent(new window.Event('change', { bubbles: true }));
+});
+ok('«в каком дне больше всего?» без столбца — ответ по всей таблице', () => {
+  click('#preset-days');
+  const r = ask('в каком дне больше всего сделали?');
+  assert(r.ok, r.text);
+  assert(r.text.includes('135'), `ожидалось 135: ${r.text}`);
+});
+ok('«− столбец» удаляет столбец в фокусе, а не последний', () => {
+  click('#preset-days');
+  window.confirm = () => true;
+  const cell = $('[data-cell="1:0"]'); // строка «Второй день», столбец «сделали»
+  cell.dispatchEvent(new window.FocusEvent('focusin', { bubbles: true }));
+  click('#del-col');
+  const smeta = window.__smeta.model;
+  nodeAssert.equal(smeta.columns.length, 2, 'столбец не удалён');
+  assert(!smeta.columns.some((c) => c.title === 'сделали'), 'удалён не тот столбец');
+  assert(smeta.columns.some((c) => c.title === 'численность'), 'пропал чужой столбец');
+  click('#preset-days'); // восстановить пресет
 });
 
 if (errors.length) {
