@@ -762,7 +762,7 @@ console.log('\nСХЕМА / СМЕТА');
     const empty = sm.chartSeries(sm.presetScheme('blank'), sm.presetScheme('blank').columns[0].id);
     assert.deepEqual(empty, []);
   });
-  ok('схема: все 36 заготовленных вопросов решаются на своих пресетах', () => {
+  ok('схема: все 37 заготовленных вопросов решаются на своих пресетах', () => {
     const s = sm.emptyScheme(); // a = 12, b = 4
     const tryQ = (id, assignments, check) => {
       const res = sm.solveQuestion(s, id, assignments);
@@ -867,6 +867,13 @@ console.log('\nРУССКИЙ ЯЗЫК');
       assert.ok(r.ok, `${w}: не распознан`);
       assert.match(r.type, /причастие/);
     }
+  });
+  ok('причастие: вид по словарю — «смотревший» несовершенного, «вернувшийся» совершенного', () => {
+    assert.equal(ru.analyzeParticiple('смотревший').aspect, 'несовершенный');
+    assert.equal(ru.analyzeParticiple('спавший').aspect, 'несовершенный');
+    assert.equal(ru.analyzeParticiple('учившийся').aspect, 'несовершенный');
+    assert.equal(ru.analyzeParticiple('вернувшийся').aspect, 'совершенный');
+    assert.equal(ru.analyzeParticiple('убивший').aspect, 'совершенный');
   });
   ok('деепричастие: «читая» и «решив» распознаются с видом', () => {
     assert.equal(ru.analyzeAdverbialParticiple('читая').aspect, 'несовершенный');

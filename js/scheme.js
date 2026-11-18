@@ -11,7 +11,7 @@
  *   3) Стрелки над схемой: горизонтальная линия, вертикальные засечки,
  *      числа и дуги «что от чего зависит» (или «зависит от выбранного
  *      вопроса» — пункт «Что нужно найти» подсвечивает входы стрелками).
- *   4) ~36 заготовленных вопросов по группам — от самых базовых («сумма»,
+ *   4) 37 заготовленных вопросов по группам — от самых базовых («сумма»,
  *      «среднее арифметическое») до смет, движения и работы. Группа выбирается
  *      наверху («что решаем / какая подгруппа»).
  *   5) «Своё действие»: пользователь сам добавляет новую операцию (название +
@@ -1028,15 +1028,46 @@ export function schemeSVG(model, evaluation) {
     arcs += arc(i, j, OP_SYMBOL[rel.op] || rel.op, ACC, false);
   }
 
-  // узел «?» с пунктирными стрелками от всех точек (зависит от вопроса)
+  // какие точки берёт выбранный вопрос: пунктирные линии рисуем только от них
+  let usedCols = null, usedVars = null;
+  const q = model.questionId ? findQuestion(model, model.questionId) : null;
+  if (q) {
+    usedCols = new Set(); usedVars = new Set();
+    const idRe = /[A-Za-zА-Яа-яЁё_][A-Za-zА-Яа-яЁё0-9_]*/g;
+    for (const op of q.operands || []) {
+      const raw = model.assignments?.[op.key];
+      const asg = (raw && typeof raw === 'object') ? raw : { kind: 'expr', src: String(raw ?? '') };
+      if (asg.kind === 'columnSum') { if (asg.columnId) usedCols.add(asg.columnId); continue; }
+      if (asg.kind === 'rowSum') continue; // строки — не точки схемы
+      const src = String(asg.src ?? '');
+      for (const tok of src.match(idRe) || []) {
+        if (model.vars.some((v) => String(v.name).trim() === tok)) usedVars.add(tok);
+        const col = model.columns.find((c) => String(c.title).trim() === tok);
+        if (col) usedCols.add(col.id);
+      }
+    }
+  }
+  const pointUsed = (p) => (p.kind === 'col' ? usedCols?.has(p.id) : usedVars?.has(p.id));
+
+  // узел «?» с пунктирными стрелками от точек, которые берёт вопрос
   const qx = W - 20;
   if (model.questionId && pts.length) {
     s += `<circle cx="${qx}" cy="${baseY - 46}" r="11.5" fill="none" stroke="${OK}" stroke-width="1.8" stroke-dasharray="4 3"/>`;
     s += `<text x="${qx}" y="${baseY - 42}" fill="${OK}" font-size="12" text-anchor="middle" font-weight="700">?</text>`;
+    let linked = 0;
     pts.forEach((p, i) => {
+      const used = pointUsed(p);
+      if (used) linked++;
       const x = xOf(i);
-      if (qx - x > 40) s += `<path d="M ${x} ${baseY - 10} L ${qx - 6} ${baseY - 42}" fill="none" stroke="${OK}" stroke-width="1.1" stroke-dasharray="3 4" opacity="0.55"/>`;
+      if (used && qx - x > 40) s += `<path d="M ${x} ${baseY - 10} L ${qx - 6} ${baseY - 42}" fill="none" stroke="${OK}" stroke-width="1.3" stroke-dasharray="3 4" opacity="0.75"/>`;
     });
+    // вопрос есть, но точки не сопоставились — честно соединяем все (как раньше)
+    if (!linked && usedCols) {
+      pts.forEach((p, i) => {
+        const x = xOf(i);
+        if (qx - x > 40) s += `<path d="M ${x} ${baseY - 10} L ${qx - 6} ${baseY - 42}" fill="none" stroke="${OK}" stroke-width="1.1" stroke-dasharray="3 4" opacity="0.55"/>`;
+      });
+    }
   }
 
   s += `<defs>`
