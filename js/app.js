@@ -1,12 +1,14 @@
 /* =========================================================================
  * app.js — калькулятор: клавиатура, настройки (за шестернёй) и справочник.
  * ========================================================================= */
-import { fmt, fmtSmart, fmtPlain, solveFormula, evaluate, evaluateWithSteps, substituteText, checkIdentity, preprocess } from './mathcore.js';
+import { fmt, fmtSmart, fmtPlain, solveFormula, solveEquation, solveSystemByMethod, linearIn, numericRoots, splitEquation, arithmeticMean, checkEquationSteps, evaluate, evaluateWithSteps, substituteText, checkIdentity, preprocess } from './mathcore.js';
 import { FORMULAS, FORMULA_BY_ID, CHAPTER_BY_ID, BOOK, STATS, formulaSearch } from './formulas.js';
 import { parseInterval, describeInterval, numberLineSVG, intersect, union } from './intervals.js';
 import { solveInequality, longArithmetic, divideAngle } from './inequalities.js';
 import { INFO_UNITS, convertInfoSize, convertBase, parseInfoSize, solveItTask } from './it.js';
 import { GEO_TOOLS, solveGeoTask } from './geo.js';
+import { parseNumberList, descriptiveStatistics, weightedMean, linearRegression, histogramSVG, regressionSVG } from './statistics.js';
+import { IDEAS, IDEA_CATEGORIES } from './ideas.js';
 import { triangleBySides, triangleBySAS, triangleByASA, triangleSVG, triangleStats } from './triangle.js';
 import './grapher.js';
 
@@ -46,6 +48,12 @@ const SHOW_ALL = () => settings.mode === 'full';
  * ========================================================================= */
 const SCREENS = {
   calc: $('#screen-calc'),
+  mean: $('#screen-mean'),
+  stats: $('#screen-stats'),
+  equation: $('#screen-equation'),
+  system: $('#screen-system'),
+  history: $('#screen-history'),
+  ideas: $('#screen-ideas'),
   ineq: $('#screen-ineq'),
   interval: $('#screen-interval'),
   graph: $('#screen-graph'),
@@ -56,7 +64,7 @@ const SCREENS = {
   ref: $('#screen-ref'),
 };
 const TITLES = {
-  calc: 'Калькулятор', ineq: 'Неравенства', interval: 'Промежутки', graph: 'Графики',
+  calc: 'Калькулятор', mean: 'Среднее арифметическое', stats: 'Статистика', equation: 'Уравнения', system: 'Системы уравнений', history: 'Журнал решений', ideas: 'Каталог идей', ineq: 'Неравенства', interval: 'Промежутки', graph: 'Графики',
   info: 'Информатика', geo: 'Геометрия', smeta: 'Смета',
   settings: 'Настройки', ref: 'Справочник',
 };
@@ -72,6 +80,8 @@ function show(name) {
   window.scrollTo({ top: 0 });
   if (name === 'settings') renderSettings();
   if (name === 'ref') renderRef();
+  if (name === 'history') renderMathHistory();
+  if (name === 'ideas') renderIdeas();
   if (name === 'smeta') { const f = $('#smeta-frame'); if (f && !f.dataset.loaded) f.dataset.loaded = '1'; }
 }
 
@@ -349,6 +359,326 @@ longToggle.addEventListener('change', () => {
   if (longToggle.checked && !justEvaluated) longOut.hidden = false;
   renderLong(lastAnswer);
 });
+
+/* =========================================================================
+ * СРЕДНЕЕ АРИФМЕТИЧЕСКОЕ И УРАВНЕНИЯ
+ * ========================================================================= */
+function parseMeanValues(raw) {
+  const text = String(raw ?? '').trim();
+  if (!text) throw new Error('Введите числа для вычисления среднего.');
+  let parts;
+  if (/[;\n]/.test(text)) parts = text.split(/[;\n]/);
+  else if (/[,;]/.test(text) && (text.match(/,/g) || []).length > 1) parts = text.split(',');
+  else if (/,[ \t]+/.test(text)) parts = text.split(/,\s*/);
+  else if (/\s+/.test(text.trim())) parts = text.trim().split(/\s+/);
+  else parts = [text];
+  const values = parts.map((part) => {
+    const token = part.trim().replace(/[−–—]/g, '-');
+    if (!token || !/^[+-]?(?:\d+(?:[.,]\d*)?|[.,]\d+)(?:[eE][+-]?\d+)?$/.test(token)) {
+      throw new Error(`Проверьте значение «${token || 'пустое'}»: вводите только числа, разделяя их точкой с запятой или новой строкой.`);
+    }
+    const value = Number(token.replace(',', '.'));
+    if (!Number.isFinite(value)) throw new Error(`Число «${token}» слишком велико.`);
+    return value;
+  });
+  return values;
+}
+
+function calculateMean() {
+  const out = $('#mean-output');
+  try {
+    const values = parseMeanValues($('#mean-values').value);
+    const result = arithmeticMean(values);
+    const sequence = values.map(fmt).join(' + ');
+    recordMathHistory({ type: 'mean', input: { values: $('#mean-values').value }, answer: fmt(result.mean) });
+    out.innerHTML = `<div class="answer" style="margin-top:10px">
+      <div class="answer-label">Среднее арифметическое</div>
+      <p class="answer-value">${esc(fmtSmart(result.mean))}</p>
+      <p class="answer-sub">Сумма: ${esc(fmt(result.sum))} · Количество чисел: ${result.count}</p>
+    </div><details class="more" open><summary>Решение</summary><div class="more-body"><ol class="steps">
+      <li>Складываем все числа: ${esc(sequence)} = ${esc(fmt(result.sum))}.</li>
+      <li>Делим сумму на количество чисел: ${esc(fmt(result.sum))} ÷ ${result.count} = ${esc(fmtSmart(result.mean))}.</li>
+    </ol></div></details>`;
+  } catch (error) {
+    out.innerHTML = `<div class="err">${esc(error.message)}</div>`;
+  }
+}
+$('#mean-calculate').addEventListener('click', calculateMean);
+$('#mean-values').addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) { event.preventDefault(); calculateMean(); }
+});
+
+function calculateStatistics() {
+  const out = $('#stats-output');
+  try {
+    const raw = $('#stats-values').value;
+    const values = parseNumberList(raw);
+    const s = descriptiveStatistics(values);
+    const modes = s.modes.length ? s.modes.map(fmt).join('; ') : 'нет единственной моды';
+    const rows = [
+      ['Количество наблюдений', s.n], ['Сумма', fmt(s.sum)], ['Среднее арифметическое', fmtSmart(s.mean)],
+      ['Медиана', fmt(s.median)], ['Мода', modes], ['Минимум / максимум', `${fmt(s.min)} / ${fmt(s.max)}`],
+      ['Размах', fmt(s.range)], ['Q1 / Q3', `${fmt(s.q1)} / ${fmt(s.q3)}`], ['Межквартильный размах', fmt(s.iqr)],
+      ['Дисперсия (генеральная / выборочная)', `${fmt(s.populationVariance)} / ${s.sampleVariance === null ? '—' : fmt(s.sampleVariance)}`],
+      ['Стандартное отклонение (генеральное / выборочное)', `${fmt(s.populationStdDev)} / ${s.sampleStdDev === null ? '—' : fmt(s.sampleStdDev)}`],
+      ['Стандартная ошибка среднего', s.standardError === null ? '—' : fmt(s.standardError)],
+      ['Геометрическое среднее', s.geometricMean === null ? 'определено только для положительных чисел' : fmt(s.geometricMean)],
+      ['Гармоническое среднее', s.harmonicMean === null ? 'определено только для положительных чисел' : fmt(s.harmonicMean)],
+    ];
+    const ci = s.confidence95 ? `<p class="answer-sub">Приближённый 95% интервал среднего: [${esc(fmt(s.confidence95[0]))}; ${esc(fmt(s.confidence95[1]))}]${s.n < 30 ? ' · нормальное приближение, для малой выборки ориентировочное' : ''}</p>` : '';
+    const unusual = s.outliers.length ? `<div class="hint hint-note">Возможные выбросы по правилу 1,5·IQR: ${esc(s.outliers.map(fmt).join('; '))}. Это сигнал для проверки данных, не автоматическое удаление.</div>` : '';
+    recordMathHistory({ type: 'stats', input: { values: raw }, answer: fmt(s.mean) });
+    out.innerHTML = `<div class="answer" style="margin-top:10px"><div class="answer-label">Сводка данных · ${s.n} наблюдений</div>
+      <div class="table-values">${rows.map(([label, value]) => `<span><b>${esc(label)}:</b> ${esc(value)}</span>`).join('')}</div>${ci}${unusual}
+      ${histogramSVG(values)}<details class="more"><summary>Как получены показатели</summary><div class="more-body"><ol class="steps">
+        <li>Среднее = сумма / количество = ${esc(fmt(s.sum))} / ${s.n} = ${esc(fmt(s.mean))}.</li>
+        <li>Медиана и квартильные значения вычислены после сортировки данных.</li>
+        <li>Выборочная дисперсия делится на n−1; генеральная — на n. Это разные предположения о данных.</li>
+        <li>Границы выбросов: Q1 − 1,5·IQR = ${esc(fmt(s.lowerFence))}; Q3 + 1,5·IQR = ${esc(fmt(s.upperFence))}.</li>
+      </ol></div></details></div>`;
+  } catch (error) { out.innerHTML = `<div class="err">${esc(error.message)}</div>`; }
+}
+$('#stats-analyze').addEventListener('click', calculateStatistics);
+$('#weighted-calculate').addEventListener('click', () => {
+  const out = $('#weighted-output');
+  try {
+    const values = parseNumberList($('#weighted-values').value, 'значения');
+    const weights = parseNumberList($('#weighted-weights').value, 'веса');
+    const result = weightedMean(values, weights);
+    out.innerHTML = `<div class="answer" style="margin-top:8px"><div class="answer-label">Взвешенное среднее</div><p class="answer-value">${esc(fmtSmart(result.value))}</p>
+      <p class="answer-sub">Σ(xᵢ·wᵢ) / Σwᵢ = ${esc(fmt(result.weightedSum))} / ${esc(fmt(result.totalWeight))}</p></div>`;
+  } catch (error) { out.innerHTML = `<div class="err">${esc(error.message)}</div>`; }
+});
+$('#regression-calculate').addEventListener('click', () => {
+  const out = $('#regression-output');
+  try {
+    const xs = parseNumberList($('#regression-x').value, 'значения X');
+    const ys = parseNumberList($('#regression-y').value, 'значения Y');
+    const model = linearRegression(xs, ys);
+    recordMathHistory({ type: 'regression', input: { xs: $('#regression-x').value, ys: $('#regression-y').value }, answer: `y = ${fmt(model.slope)}x + ${fmt(model.intercept)}` });
+    out.innerHTML = `<div class="answer" style="margin-top:8px"><div class="answer-label">Линейная регрессия · ${model.n} пар</div>
+      <p class="answer-value">y = ${esc(fmt(model.slope))}x ${model.intercept >= 0 ? '+' : '−'} ${esc(fmt(Math.abs(model.intercept)))}</p>
+      <p class="answer-sub">Корреляция r: ${model.correlation === null ? 'не определена' : esc(fmt(model.correlation))} · R²: ${model.rSquared === null ? 'не определён' : esc(fmt(model.rSquared))}</p>
+      ${regressionSVG(model)}<p class="hint hint-note">Регрессия описывает линейную связь в этих данных и сама по себе не доказывает причинность.</p></div>`;
+  } catch (error) { out.innerHTML = `<div class="err">${esc(error.message)}</div>`; }
+});
+
+function calculateEquation() {
+  const out = $('#equation-output');
+  const equation = $('#equation-input').value.trim();
+  const variable = $('#equation-variable').value.trim() || 'x';
+  const method = $('#equation-method').value;
+  if (!equation) { out.innerHTML = '<div class="err">Введите уравнение.</div>'; return; }
+  try {
+    let result;
+    if (method === 'numeric') {
+      const [left, right] = splitEquation(equation);
+      const roots = numericRoots((value) => evaluate(left, { [variable]: value }) - evaluate(right, { [variable]: value }), [-100, 100]);
+      result = { type: roots.length > 1 ? 'two' : roots.length ? 'one' : 'none', roots,
+        steps: ['Ищем смену знака разности левой и правой частей на [−100; 100].', roots.length
+          ? `Найденные корни: ${roots.map(fmt).join('; ')}.`
+          : 'На этом отрезке корни не найдены. Метод может пропустить касание оси и корни за пределами отрезка.'] };
+    } else {
+      if (method === 'linear') {
+        const [left, right] = splitEquation(equation);
+        if (!linearIn(`(${left}) - (${right})`, variable).linear) throw new Error('Выбран линейный способ, но уравнение нелинейное. Выберите автоматический или численный способ.');
+      }
+      result = solveEquation(equation, variable);
+      if (method === 'quadratic' && !result.steps.some((step) => step.includes('ax² + bx + c = 0'))) {
+        throw new Error('Не удалось представить уравнение как квадратное. Проверьте степень неизвестной или выберите другой способ.');
+      }
+    }
+    const answer = result.type === 'many'
+      ? 'Любое значение переменной (бесконечно много решений)'
+      : result.roots.length ? result.roots.map((root) => `${variable} = ${fmtSmart(root)}`).join('; ') : 'Действительных корней не найдено';
+    const resultLabel = result.type === 'many' ? 'бесконечно много решений'
+      : result.type === 'two' ? 'несколько корней' : result.type === 'one' ? 'один корень' : 'корней нет';
+    const displayMode = $('#equation-display-mode').value;
+    const gradual = displayMode === 'gradual';
+    const isQuadratic = result.steps.some((step) => step.includes('ax² + bx + c = 0'));
+    const isLinear = result.steps.some((step) => step.includes('Перенесём всё в левую часть'));
+    const teacherExplanation = isQuadratic
+      ? 'Квадратное уравнение приводим к стандартному виду. Дискриминант показывает число действительных корней: D больше нуля — два, D равен нулю — один, D меньше нуля — ни одного. Каждый найденный корень нужно подставить в исходное уравнение.'
+      : isLinear
+      ? 'Цель — оставить неизвестную в одной части, числа перенести в другую, выполняя одинаковые операции с обеими частями равенства. В конце проверяем найденное значение подстановкой.'
+      : 'Численный метод проверяет значения на выбранном интервале и уточняет участки, где левая и правая части совпадают. Это приближённый поиск: отсутствие найденного корня не доказывает, что корней нет за пределами интервала.';
+    recordMathHistory({ type: 'equation', input: { equation, variable, method, displayMode }, answer });
+    out.innerHTML = `<div class="answer" id="equation-answer-card" style="margin-top:10px"${gradual ? ' hidden' : ''}><div class="answer-label">Ответ · ${esc(resultLabel)}</div>
+      <p class="answer-value">${esc(answer)}</p></div>
+      <details class="more" open><summary>${gradual ? 'Открывайте подсказки по одной' : 'Ход решения'}</summary><div class="more-body"><ol class="steps">${result.steps.map((step, index) => `<li data-reveal-step="${index}"${gradual && index > 0 ? ' hidden' : ''}>${esc(step)}</li>`).join('')}</ol>
+        ${gradual ? `<p class="answer-sub" id="equation-reveal-progress">Шаг 1 из ${result.steps.length}</p><button type="button" class="btn" id="equation-next-hint">Следующая подсказка</button>` : ''}</div></details>
+      ${displayMode === 'teacher' ? `<details class="more" open><summary>Объяснение как преподаватель</summary><div class="more-body">${esc(teacherExplanation)}</div></details>` : ''}`;
+    if (gradual) {
+      let revealed = Math.min(1, result.steps.length);
+      $('#equation-next-hint').addEventListener('click', () => {
+        revealed = Math.min(result.steps.length, revealed + 1);
+        $$('[data-reveal-step]', out).forEach((step) => { step.hidden = Number(step.dataset.revealStep) >= revealed; });
+        if (revealed >= result.steps.length) {
+          $('#equation-answer-card').hidden = false;
+          $('#equation-next-hint').hidden = true;
+          $('#equation-reveal-progress').textContent = `Все шаги показаны: ${result.steps.length} из ${result.steps.length}.`;
+        } else $('#equation-reveal-progress').textContent = `Шаг ${revealed} из ${result.steps.length}`;
+      });
+    }
+  } catch (error) {
+    out.innerHTML = `<div class="err">${esc(error.message || 'Не удалось решить это уравнение.')}</div>`;
+  }
+}
+$('#equation-solve').addEventListener('click', calculateEquation);
+$('#check-student-steps').addEventListener('click', () => {
+  const out = $('#student-check-output');
+  try {
+    const result = checkEquationSteps($('#equation-input').value.trim(), $('#student-steps').value, $('#equation-variable').value.trim() || 'x');
+    const rows = result.checked.map((step, index) => `<li>${step.correct ? '✓' : '✗'} Шаг ${index + 1}: ${esc(step.line)}</li>`).join('');
+    out.innerHTML = `<div class="answer" style="margin-top:8px"><div class="answer-label">${result.correct ? 'Ошибок не найдено' : `Первая ошибка — шаг ${result.firstWrongStep}`}</div>
+      <p class="answer-sub">${esc(result.message)}</p>${rows ? `<ol class="steps">${rows}</ol>` : ''}</div>`;
+  } catch (error) { out.innerHTML = `<div class="err">${esc(error.message)}</div>`; }
+});
+$$('[data-equation]').forEach((button) => button.addEventListener('click', () => {
+  $('#equation-input').value = button.dataset.equation;
+  calculateEquation();
+}));
+
+const SYSTEM_METHODS = ['elimination', 'substitution', 'cramer', 'graphical'];
+const SYSTEM_METHOD_NAMES = {
+  elimination: 'Сложение (исключение)', substitution: 'Подстановка',
+  cramer: 'Определители Крамера', graphical: 'Графический метод',
+};
+function systemGraphSVG(values, rows, vars) {
+  const width = 320, height = 220, pad = 24;
+  const rangeX = Math.max(5, Math.min(50, Math.abs(values[vars[0]]) * .3));
+  const rangeY = Math.max(5, Math.min(50, Math.abs(values[vars[1]]) * .3));
+  const xmin = values[vars[0]] - rangeX, xmax = values[vars[0]] + rangeX;
+  const ymin = values[vars[1]] - rangeY, ymax = values[vars[1]] + rangeY;
+  const px = (x) => pad + (x - xmin) / (xmax - xmin) * (width - 2 * pad);
+  const py = (y) => height - pad - (y - ymin) / (ymax - ymin) * (height - 2 * pad);
+  const lines = rows.map((row, index) => {
+    const color = ['#ff9f0a', '#4b9bff'][index];
+    if (Math.abs(row.by) < 1e-12) {
+      const x = -row.c / row.bx;
+      return `<line x1="${px(x)}" y1="${pad}" x2="${px(x)}" y2="${height - pad}" stroke="${color}" stroke-width="2.5"/>`;
+    }
+    const y1 = -(row.bx * xmin + row.c) / row.by;
+    const y2 = -(row.bx * xmax + row.c) / row.by;
+    return `<line x1="${pad}" y1="${py(y1)}" x2="${width - pad}" y2="${py(y2)}" stroke="${color}" stroke-width="2.5"/>`;
+  }).join('');
+  const axes = `${xmin <= 0 && xmax >= 0 ? `<line x1="${px(0)}" y1="${pad}" x2="${px(0)}" y2="${height-pad}" stroke="#69727e" stroke-width="1"/>` : ''}${ymin <= 0 && ymax >= 0 ? `<line x1="${pad}" y1="${py(0)}" x2="${width-pad}" y2="${py(0)}" stroke="#69727e" stroke-width="1"/>` : ''}`;
+  return `<svg viewBox="0 0 ${width} ${height}" role="img" aria-label="Графики уравнений и их точка пересечения" style="width:100%;max-width:420px;height:auto;background:#11151a;border:1px solid #30363d;border-radius:12px;margin-top:10px"><title>Точка пересечения прямых — решение системы</title><defs><clipPath id="system-plot-clip"><rect x="${pad}" y="${pad}" width="${width-2*pad}" height="${height-2*pad}"/></clipPath></defs>${axes}<g clip-path="url(#system-plot-clip)">${lines}<circle cx="${px(values[vars[0]])}" cy="${py(values[vars[1]])}" r="5" fill="#37d399" stroke="#fff" stroke-width="1.5"/></g><text x="${width-pad}" y="${height-5}" fill="#a8b1bd" font-size="11" text-anchor="end">${esc(vars[0])}</text><text x="8" y="${pad}" fill="#a8b1bd" font-size="11">${esc(vars[1])}</text></svg>`;
+}
+function calculateSystem() {
+  const out = $('#system-output');
+  const equations = [$('#system-eq1').value.trim(), $('#system-eq2').value.trim()];
+  const vars = $('#system-variables').value.split(/[;,]/).map((part) => part.trim()).filter(Boolean);
+  if (equations.some((eq) => !eq)) { out.innerHTML = '<div class="err">Введите оба уравнения системы.</div>'; return; }
+  if (vars.length !== 2 || vars[0] === vars[1]) { out.innerHTML = '<div class="err">Укажите две разные переменные, например x, y.</div>'; return; }
+  const selected = $('#system-method').value;
+  try {
+    const methods = selected === 'compare' ? SYSTEM_METHODS : [selected];
+    const results = methods.map((method) => ({ method, result: solveSystemByMethod(equations, method, vars) }));
+    const first = results[0].result;
+    let answer = first.type === 'one'
+      ? `${vars[0]} = ${fmt(first.values[vars[0]])}; ${vars[1]} = ${fmt(first.values[vars[1]])}`
+      : first.type === 'many' ? 'Бесконечно много решений' : 'Решений нет';
+    recordMathHistory({ type: 'system', input: { equations, vars, method: selected }, answer });
+    out.innerHTML = results.map(({ method, result }) => {
+      const methodAnswer = result.type === 'one'
+        ? `(${vars[0]}; ${vars[1]}) = (${fmtSmart(result.values[vars[0]])}; ${fmtSmart(result.values[vars[1]])})`
+        : result.type === 'many' ? 'Бесконечно много решений' : 'Решений нет';
+      const steps = result.steps.map((step) => `<li>${esc(step)}</li>`).join('');
+      const graph = method === 'graphical' && result.type === 'one' ? systemGraphSVG(result.values, result.rows, vars) : '';
+      return `<section class="answer" style="margin-top:10px">
+        <div class="answer-label">${esc(SYSTEM_METHOD_NAMES[method])} · ${esc(result.type === 'one' ? 'одно решение' : result.type === 'many' ? 'бесконечно много решений' : 'решений нет')}</div>
+        <p class="answer-value">${esc(methodAnswer)}</p>${graph}
+        <details class="more" open><summary>Ход решения</summary><div class="more-body"><ol class="steps">${steps}</ol></div></details>
+      </section>`;
+    }).join('');
+  } catch (error) {
+    out.innerHTML = `<div class="err">${esc(error.message || 'Не удалось решить систему.')}</div>`;
+  }
+}
+$('#system-solve').addEventListener('click', calculateSystem);
+
+const MATH_HISTORY_KEY = 'gdzcalc.math-history.v1';
+function readMathHistory() {
+  try {
+    const data = JSON.parse(localStorage.getItem(MATH_HISTORY_KEY) || '[]');
+    return Array.isArray(data) ? data.filter((item) => item && item.id && item.type && item.input) : [];
+  } catch { return []; }
+}
+function recordMathHistory(entry) {
+  const history = readMathHistory();
+  history.unshift({ ...entry, id: `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, at: Date.now() });
+  try { localStorage.setItem(MATH_HISTORY_KEY, JSON.stringify(history.slice(0, 50))); } catch { /* storage may be disabled/full */ }
+}
+function renderMathHistory() {
+  const host = $('#history-list');
+  if (!host) return;
+  const history = readMathHistory();
+  host.innerHTML = history.length ? history.map((item) => {
+    const label = item.type === 'equation' ? `Уравнение: ${item.input.equation}`
+      : item.type === 'system' ? `Система: ${(item.input.equations || []).join(' · ')}`
+      : item.type === 'regression' ? `Регрессия: X (${item.input.xs}) · Y (${item.input.ys})`
+      : item.type === 'stats' ? `Статистика: ${item.input.values || ''}`
+      : `Среднее: ${item.input.values || ''}`;
+    const when = new Date(item.at || 0).toLocaleString('ru-RU');
+    return `<button class="row-link" type="button" data-history-id="${esc(item.id)}">
+      <span>${esc(label)}</span><span class="row-link-sub">${esc(item.answer || '')} · ${esc(when)}</span><span class="chev">↶</span>
+    </button>`;
+  }).join('') : '<p class="hint hint-note">Пока нет сохранённых решений. Решите уравнение или систему — запись появится здесь.</p>';
+  $$('[data-history-id]', host).forEach((button) => button.addEventListener('click', () => restoreMathHistory(button.dataset.historyId)));
+}
+function restoreMathHistory(id) {
+  const item = readMathHistory().find((entry) => entry.id === id);
+  if (!item) return;
+  if (item.type === 'equation') {
+    $('#equation-input').value = item.input.equation;
+    $('#equation-variable').value = item.input.variable;
+    $('#equation-method').value = item.input.method;
+    $('#equation-display-mode').value = item.input.displayMode || 'answer';
+    show('equation'); calculateEquation();
+  } else if (item.type === 'system') {
+    $('#system-eq1').value = item.input.equations[0];
+    $('#system-eq2').value = item.input.equations[1];
+    $('#system-variables').value = item.input.vars.join(', ');
+    $('#system-method').value = item.input.method;
+    show('system'); calculateSystem();
+  } else if (item.type === 'mean') {
+    $('#mean-values').value = item.input.values;
+    show('mean'); calculateMean();
+  } else if (item.type === 'stats') {
+    $('#stats-values').value = item.input.values;
+    show('stats'); calculateStatistics();
+  } else if (item.type === 'regression') {
+    $('#regression-x').value = item.input.xs; $('#regression-y').value = item.input.ys;
+    show('stats'); $('#regression-calculate').click();
+  }
+}
+$('#history-clear').addEventListener('click', () => {
+  try { localStorage.removeItem(MATH_HISTORY_KEY); } catch { /* storage may be disabled */ }
+  renderMathHistory();
+});
+
+let ideaLimit = 60;
+const ideaCategory = $('#idea-category');
+ideaCategory.innerHTML = '<option value="all">Все категории</option>' + IDEA_CATEGORIES.map((category) => `<option value="${esc(category)}">${esc(category)}</option>`).join('');
+function renderIdeas(resetLimit = false) {
+  if (resetLimit) ideaLimit = 60;
+  const query = $('#idea-search').value.trim().toLocaleLowerCase('ru');
+  const category = ideaCategory.value;
+  const matches = IDEAS.filter((idea) => (category === 'all' || idea.category === category)
+    && (!query || `${idea.title} ${idea.description} ${idea.category} ${idea.feasibility}`.toLocaleLowerCase('ru').includes(query)));
+  const visible = matches.slice(0, ideaLimit);
+  $('#idea-count').textContent = `Найдено ${matches.length} из ${IDEAS.length}; отображается ${visible.length}. Каталог идей не означает, что эти функции уже готовы.`;
+  $('#idea-list').innerHTML = visible.map((idea) => `<article class="answer" style="margin:6px 0;padding:10px">
+    <div class="answer-label">Идея ${idea.id} · ${esc(idea.category)}</div>
+    <b>${esc(idea.title)}</b><p class="answer-sub">${esc(idea.description)}</p>
+    <span class="hint">Зависимости: ${esc(idea.feasibility)}</span>
+  </article>`).join('') || '<p class="hint hint-note">Ничего не найдено — попробуйте другое слово или категорию.</p>';
+  $('#ideas-more').hidden = visible.length >= matches.length;
+}
+$('#idea-search').addEventListener('input', () => renderIdeas(true));
+ideaCategory.addEventListener('change', () => renderIdeas(true));
+$('#ideas-more').addEventListener('click', () => { ideaLimit += 60; renderIdeas(); });
 
 /* =========================================================================
  * НЕРАВЕНСТВА
