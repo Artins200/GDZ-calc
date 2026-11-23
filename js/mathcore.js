@@ -497,13 +497,75 @@ export function solveEquation(eq, v = 'x', scope = {}, domain = [-100, 100]) {
     steps.push(`${fmt(B)}·${v} = ${fmt(-A)}`);
     steps.push(`${v} = (${fmt(-A)}) / (${fmt(B)}) = ${fmt(x)}`);
   } else {
-    roots = numericRoots(f, domain);
-    steps.push(`Уравнение нелинейное: ищем корни численно на отрезке [${fmt(domain[0])}; ${fmt(domain[1])}]`);
-    steps.push(roots.length
-      ? `Найденные корни: ${roots.map((r) => fmt(r)).join('; ')}`
-      : 'Корней на рассмотренном промежутке не найдено');
+    // Сначала проверяем, не является ли выражение квадратным многочленом.
+    // Это находит и корни чётной кратности (например, x² = 0), которые
+    // один лишь поиск смены знака пропускает.
+    const c = f(0), b = (f(1) - f(-1)) / 2, a = (f(1) + f(-1) - 2 * c) / 2;
+    const samples = [-3, -2, 2, 3, Math.SQRT2, -Math.SQRT2, Math.PI / 7, -Math.PI / 7];
+    const isQuadratic = [a, b, c].every(Number.isFinite)
+      && samples.every((x) => {
+        const actual = f(x), predicted = a * x * x + b * x + c;
+        return Number.isFinite(actual) && Math.abs(actual - predicted) < 1e-7 * (1 + Math.abs(actual));
+      });
+    if (isQuadratic && Math.abs(a) > EPS) {
+      const q = solveQuadratic(a, b, c);
+      roots = q.roots;
+      steps.push('Приведём уравнение к виду ax² + bx + c = 0.');
+      steps.push(...q.steps);
+      steps.push(roots.length
+        ? `Проверка подстановкой: найдено ${roots.length} корн${roots.length === 1 ? 'ь' : roots.length === 2 ? 'я' : 'ей'}.`
+        : 'Действительных корней нет.');
+    } else {
+      roots = numericRoots(f, domain);
+      steps.push(`Уравнение нелинейное: ищем корни численно на отрезке [${fmt(domain[0])}; ${fmt(domain[1])}].`);
+      steps.push(roots.length
+        ? `Найденные корни: ${roots.map((r) => fmt(r)).join('; ')}`
+        : 'На указанном промежутке корни не найдены; это не доказывает, что их нет вне промежутка.');
+    }
   }
-  return { type: roots.length ? 'one' : 'none', roots, steps };
+  return { type: roots.length > 1 ? 'two' : roots.length ? 'one' : 'none', roots, steps };
+}
+
+/** Проверяет решение ученика, находя первый переход, который изменил множество корней. */
+export function checkEquationSteps(original, submittedSteps, variable = 'x') {
+  const lines = String(submittedSteps ?? '').split(/\r?\n/).map((line) => line.trim())
+    .filter(Boolean).map((line) => line.replace(/^(?:шаг\s*)?\d+[.)]\s*/i, ''));
+  if (!lines.length) throw new Error('Введите хотя бы один шаг решения.');
+  const solveLine = (line) => {
+    const alternatives = line.split(';').map((part) => part.trim()).filter(Boolean);
+    if (!alternatives.length) throw new Error('Пустой шаг.');
+    const all = alternatives.map((part) => solveEquation(part, variable));
+    if (all.some((result) => result.type === 'many')) return { type: 'many', roots: [] };
+    const roots = [...new Set(all.flatMap((result) => result.roots).map((root) => Number(root.toPrecision(12))))].sort((a, b) => a - b);
+    return { type: roots.length > 1 ? 'two' : roots.length ? 'one' : 'none', roots };
+  };
+  const expected = solveLine(original);
+  const equivalent = (a, b) => a.type === b.type && a.roots.length === b.roots.length
+    && a.roots.every((root, i) => Math.abs(root - b.roots[i]) <= 1e-7 * (1 + Math.abs(root)));
+  const checked = [];
+  for (let i = 0; i < lines.length; i++) {
+    let actual;
+    try { actual = solveLine(lines[i]); }
+    catch (error) {
+      return { correct: false, firstWrongStep: i + 1, line: lines[i], checked,
+        message: `Шаг ${i + 1} нельзя разобрать: ${error.message}` };
+    }
+    const ok = equivalent(expected, actual);
+    checked.push({ line: lines[i], correct: ok, roots: actual.roots });
+    if (!ok) return { correct: false, firstWrongStep: i + 1, line: lines[i], expected, actual, checked,
+      message: `Первый неверный шаг — ${i + 1}: после него множество решений изменилось.` };
+  }
+  return { correct: true, checked, expected, message: 'Все записанные переходы сохраняют множество действительных корней.' };
+}
+
+/** Среднее арифметическое конечного непустого набора чисел. */
+export function arithmeticMean(values) {
+  if (!Array.isArray(values) || values.length === 0) throw new Error('Введите хотя бы одно число');
+  if (!values.every((n) => Number.isFinite(n))) throw new Error('Все значения должны быть конечными числами');
+  const sum = values.reduce((total, n) => total + n, 0);
+  const mean = sum / values.length;
+  if (!Number.isFinite(sum) || !Number.isFinite(mean)) throw new Error('Слишком большие числа — проверьте ввод');
+  return { sum, count: values.length, mean };
 }
 
 /** Квадратное уравнение ax²+bx+c=0: формула дискриминанта и Виет. */
@@ -513,7 +575,8 @@ export function solveQuadratic(a, b, c) {
   const steps = [`D = b² − 4ac = (${fmt(b)})² − 4·${fmt(a)}·${fmt(c)} = ${fmt(D)}`];
   if (D < -EPS) return { type: 'none', roots: [], D, steps: [...steps, 'D < 0, действительных корней нет.'] };
   if (Math.abs(D) <= EPS) {
-    const x = -b / (2 * a);
+    const raw = -b / (2 * a);
+    const x = Math.abs(raw) < EPS ? 0 : raw;
     return { type: 'one', roots: [x], D: 0, steps: [...steps, `x = −b/(2a) = ${fmt(x)}`] };
   }
   const roots = [(-b - Math.sqrt(D)) / (2 * a), (-b + Math.sqrt(D)) / (2 * a)].sort((x, y) => x - y);
@@ -523,27 +586,69 @@ export function solveQuadratic(a, b, c) {
   return { type: 'two', roots, D, steps };
 }
 
-/** Решение линейной системы удобным школьным методом: подстановка/сложение/графически. */
+/** Решение линейной системы школьными методами: подстановка, сложение, Крамер или графически. */
 export function solveSystemByMethod(equations, method = 'elimination', vars = ['x', 'y'], scope = {}) {
   const base = solveSystem(equations, vars, scope);
   const [vx, vy] = vars;
-  if (base.type !== 'one') return { ...base, method, steps: [...base.steps, base.note || ''] };
-  const rows = base.rows;
-  const [r1, r2] = rows;
+  if (base.type !== 'one') return { ...base, method, steps: [...base.steps] };
+  const [r1, r2] = base.rows;
+  const { [vx]: x, [vy]: y } = base.values;
   let steps;
-  if (method === 'substitution') {
+
+  if (method === 'cramer') {
+    steps = [...base.steps, `Проверка: подставим (${vx}; ${vy}) = (${fmt(x)}; ${fmt(y)}) в оба исходных уравнения.`];
+  } else if (method === 'substitution') {
     const row = Math.abs(r1.by) > EPS ? r1 : r2;
     const other = row === r1 ? r2 : r1;
-    const yCoeff = row.by;
-    const yExpr = `(${fmt(-row.bx)}·${vx} ${row.c >= 0 ? '−' : '+'} ${fmt(Math.abs(row.c))})/${fmt(yCoeff)}`;
-    steps = [`Из первого удобного уравнения выразим ${vy}: ${vy} = ${yExpr}.`, `Подставим это выражение во второе уравнение и решим относительно ${vx}.`, `${vx} = ${fmt(base.values[vx])}. Подставим значение обратно: ${vy} = ${fmt(base.values[vy])}.`];
+    if (Math.abs(row.by) > EPS) {
+      const coefficient = other.bx - other.by * row.bx / row.by;
+      const constant = other.c - other.by * row.c / row.by;
+      steps = [
+        `Из ${fmt(row.bx)}·${vx} + ${fmt(row.by)}·${vy} + (${fmt(row.c)}) = 0 выразим ${vy}: ${vy} = (−${fmt(row.bx)}·${vx} − (${fmt(row.c)}))/${fmt(row.by)}.`,
+        `Подстановка во второе уравнение даёт ${fmt(coefficient)}·${vx} + (${fmt(constant)}) = 0.`,
+        `Решаем: ${vx} = ${fmt(x)}; обратная подстановка даёт ${vy} = ${fmt(y)}.`,
+      ];
+    } else {
+      const coefficient = other.by - other.bx * row.by / row.bx;
+      const constant = other.c - other.bx * row.c / row.bx;
+      steps = [
+        `В выбранном уравнении коэффициент при ${vy} равен нулю, поэтому выразим ${vx} из ${fmt(row.bx)}·${vx} + (${fmt(row.c)}) = 0.`,
+        `Подстановка во второе уравнение даёт ${fmt(coefficient)}·${vy} + (${fmt(constant)}) = 0.`,
+        `Решаем: ${vy} = ${fmt(y)}; обратная подстановка даёт ${vx} = ${fmt(x)}.`,
+      ];
+    }
   } else if (method === 'graphical') {
-    steps = [`Запишем каждое уравнение в виде ${vy} = k${vx} + b.`, `Построим две прямые по двум точкам для каждой; точка их пересечения является решением системы.`, `Пересечение: (${vx}; ${vy}) = (${fmt(base.values[vx])}; ${fmt(base.values[vy])}).`];
+    const describe = (r, index) => Math.abs(r.by) > EPS
+      ? `①/② ${vy} = ${fmt(-r.bx / r.by)}·${vx} + (${fmt(-r.c / r.by)})`
+      : `①/② ${vx} = ${fmt(-r.c / r.bx)} (вертикальная прямая)`;
+    steps = [`Представим уравнения как прямые на координатной плоскости: ${describe(r1, 1)}; ${describe(r2, 2)}.`,
+      'Точка пересечения прямых одновременно удовлетворяет обоим уравнениям.',
+      `Точка пересечения: (${vx}; ${vy}) = (${fmt(x)}; ${fmt(y)}).`];
+  } else if (method === 'elimination') {
+    const eliminateX = Math.abs(r1.bx) + Math.abs(r2.bx) >= Math.abs(r1.by) + Math.abs(r2.by);
+    const target = eliminateX ? 'x' : 'y';
+    const remain = eliminateX ? 'y' : 'x';
+    const c1 = eliminateX ? r1.bx : r1.by;
+    const c2 = eliminateX ? r2.bx : r2.by;
+    const o1 = eliminateX ? r1.by : r1.bx;
+    const o2 = eliminateX ? r2.by : r2.bx;
+    const m1 = c2, m2 = -c1;
+    const combined = m1 * o1 + m2 * o2;
+    const constant = m1 * r1.c + m2 * r2.c;
+    const remainingValue = base.values[remain];
+    const selected = Math.abs(eliminateX ? r1.bx : r1.by) > EPS ? r1 : r2;
+    const targetCoeff = eliminateX ? selected.bx : selected.by;
+    const otherCoeff = eliminateX ? selected.by : selected.bx;
+    const targetValue = (-(otherCoeff * remainingValue + selected.c)) / targetCoeff;
+    steps = [
+      `Исключим ${target}: умножим первое уравнение на ${fmt(m1)}, второе — на ${fmt(m2)}, затем сложим.`,
+      `После сложения: ${fmt(combined)}·${remain} + (${fmt(constant)}) = 0, поэтому ${remain} = ${fmt(remainingValue)}.`,
+      `Подставим ${remain} в исходное уравнение: ${target} = ${fmt(targetValue)}.`,
+    ];
   } else {
-    const k = Math.abs(r1.bx) >= Math.abs(r2.bx) ? -r2.bx / r1.bx : -r1.bx / r2.bx;
-    steps = [`Подберём множитель для исключения ${vx}; умножим одно уравнение так, чтобы коэффициенты при ${vx} стали противоположными.`, `Сложим уравнения: переменная ${vx} исключается, получаем ${vy} = ${fmt(base.values[vy])}.`, `Подставим ${vy} в исходное уравнение: ${vx} = ${fmt(base.values[vx])}.`];
-    if (!Number.isFinite(k)) steps[0] = 'Сложим уравнения после уравнивания коэффициентов, чтобы исключить одну переменную.';
+    throw new Error('Неизвестный метод решения системы.');
   }
+  steps.push(`Проверка в исходной системе: получаем (${vx}; ${vy}) = (${fmt(x)}; ${fmt(y)}).`);
   return { ...base, method, steps };
 }
 
@@ -551,10 +656,12 @@ export function numericRoots(f, domain = [-100, 100], steps = 4000) {
   const [lo, hi] = domain;
   const h = (hi - lo) / steps;
   const roots = [];
-  let prevX = lo, prevY = safeF(f, lo);
+  const xs = [lo], ys = [safeF(f, lo)];
+  let prevX = lo, prevY = ys[0];
   for (let i = 1; i <= steps; i++) {
     const x = lo + i * h;
     const y = safeF(f, x);
+    xs.push(x); ys.push(y);
     if (Math.abs(y) < 1e-10) roots.push(x);
     else if (Number.isFinite(prevY) && Number.isFinite(y) && prevY * y < 0) {
       let a = prevX, b = x, fa = prevY;
@@ -565,6 +672,25 @@ export function numericRoots(f, domain = [-100, 100], steps = 4000) {
       roots.push((a + b) / 2);
     }
     prevX = x; prevY = y;
+  }
+  // Ищем локальные минимумы |f(x)| и уточняем их золотым сечением.
+  // Так обнаруживаются корни чётной кратности, где знак не меняется.
+  for (let i = 1; i < xs.length - 1; i++) {
+    const y0 = ys[i - 1], y1 = ys[i], y2 = ys[i + 1];
+    if (![y0, y1, y2].every(Number.isFinite)
+      || Math.abs(y1) > Math.abs(y0) || Math.abs(y1) > Math.abs(y2)
+      || (Math.abs(y1) === Math.abs(y0) && Math.abs(y1) === Math.abs(y2))) continue;
+    let a = xs[i - 1], b = xs[i + 1];
+    const ratio = (Math.sqrt(5) - 1) / 2;
+    let c = b - ratio * (b - a), d = a + ratio * (b - a);
+    let fc = Math.abs(safeF(f, c)), fd = Math.abs(safeF(f, d));
+    for (let k = 0; k < 70; k++) {
+      if (fc <= fd) { b = d; d = c; fd = fc; c = b - ratio * (b - a); fc = Math.abs(safeF(f, c)); }
+      else { a = c; c = d; fc = fd; d = a + ratio * (b - a); fd = Math.abs(safeF(f, d)); }
+    }
+    const root = (a + b) / 2, residual = Math.abs(safeF(f, root));
+    const scale = 1 + Math.max(Math.abs(y0), Math.abs(y1), Math.abs(y2));
+    if (Number.isFinite(residual) && residual <= 1e-10 * scale) roots.push(root);
   }
   const uniq = [];
   for (const r of roots.sort((a, b) => a - b)) {

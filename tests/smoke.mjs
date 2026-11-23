@@ -2,13 +2,15 @@
 import assert from 'node:assert/strict';
 import {
   evaluate, solveEquation, solveSystem, expandExpression, factorExpression,
-  checkIdentity, solveFormula, fmt, gcd, lcm, factorizationString, evaluateWithSteps, solveQuadratic, solveSystemByMethod,
+  checkIdentity, solveFormula, fmt, gcd, lcm, factorizationString, evaluateWithSteps, solveQuadratic, solveSystemByMethod, arithmeticMean, numericRoots, checkEquationSteps,
 } from '../js/mathcore.js';
 import { FORMULAS, STATS, formulaSearch } from '../js/formulas.js';
 import { parseInterval, intersect, union, numberLineSVG, describeInterval } from '../js/intervals.js';
 import { solveInequality, longArithmetic, divideAngle } from '../js/inequalities.js';
 import { convertInfoSize, convertBase, solveItTask, parseInfoSize, powerOfTwo } from '../js/it.js';
 import { solveGeoTask, triangleArea, rightTriangle, triangleHeron, adjacentAngles } from '../js/geo.js';
+import { parseNumberList, descriptiveStatistics, weightedMean, linearRegression, histogramSVG, regressionSVG } from '../js/statistics.js';
+import { IDEAS } from '../js/ideas.js';
 
 let passed = 0;
 const ok = (name, fn) => {
@@ -47,8 +49,49 @@ ok('AST пошагового вычисления учитывает скобк�
 ok('квадратное уравнение решается через дискриминант и проверяется Виетом', () => {
   const r = solveQuadratic(1, -5, 6); assert.deepEqual(r.roots, [2, 3]); assert.ok(r.steps.some(s => s.includes('Виету')));
 });
+ok('решатель уравнений находит квадратные корни, включая корень касания', () => {
+  const two = solveEquation('x^2 - 5x + 6 = 0');
+  assert.equal(two.type, 'two'); assert.deepEqual(two.roots, [2, 3]);
+  const tangent = solveEquation('x^2 = 0');
+  assert.deepEqual(tangent.roots, [0]);
+  assert.ok(tangent.steps.some(s => s.includes('ax²')));
+});
+ok('численный поиск находит касательный корень кратного кубического уравнения', () => {
+  const roots = numericRoots((x) => (x - 0.123) ** 2 * (x + 2), [-5, 5], 1000);
+  assert.ok(roots.some((root) => Math.abs(root - 0.123) < 1e-6), roots.join(', '));
+  assert.ok(roots.some((root) => Math.abs(root + 2) < 1e-6), roots.join(', '));
+});
+ok('проверка решения указывает первый переход, меняющий корни', () => {
+  const good = checkEquationSteps('x² − 5x + 6 = 0', '(x − 2)(x − 3) = 0\nx = 2; x = 3');
+  assert.equal(good.correct, true);
+  const bad = checkEquationSteps('x² − 5x + 6 = 0', 'x² − 5x + 6 = 0\nx − 2 = 0');
+  assert.equal(bad.correct, false); assert.equal(bad.firstWrongStep, 2);
+});
+ok('среднее арифметическое — сумма, количество и значение', () => {
+  const r = arithmeticMean([12.5, 15, 18.5]);
+  assert.equal(r.sum, 46); assert.equal(r.count, 3); assert.equal(r.mean, 46 / 3);
+  assert.throws(() => arithmeticMean([]), /хотя бы одно число/);
+  assert.throws(() => arithmeticMean([1, Infinity]), /конечными числами/);
+});
+ok('статистика: квартили, дисперсии, выбросы, взвешенное среднее и регрессия', () => {
+  assert.deepEqual(parseNumberList('1,5; 2; 3'), [1.5, 2, 3]);
+  const s = descriptiveStatistics([1, 2, 3, 4, 100]);
+  assert.equal(s.median, 3); assert.equal(s.q1, 2); assert.equal(s.q3, 4); assert.deepEqual(s.outliers, [100]);
+  assert.equal(weightedMean([3, 4, 5], [1, 2, 1]).value, 4);
+  const model = linearRegression([1, 2, 3], [2, 4, 6]);
+  assert.equal(model.slope, 2); assert.equal(model.intercept, 0); assert.equal(model.rSquared, 1);
+  assert.ok(histogramSVG([1, 2, 3]).includes('<svg'));
+  assert.ok(regressionSVG(model).includes('<svg'));
+  assert.throws(() => descriptiveStatistics([1e200, -1e200]), /слишком велик/);
+  assert.throws(() => weightedMean([1, 2], [1e308, 1e308]), /конечным числом/);
+});
+ok('каталог развития содержит ровно 2000 уникальных идей', () => {
+  assert.equal(IDEAS.length, 2000);
+  assert.equal(new Set(IDEAS.map((idea) => idea.title)).size, 2000);
+  assert.equal(IDEAS[0].id, 1); assert.equal(IDEAS.at(-1).id, 2000);
+});
 ok('системы имеют разбор по подстановке/сложению/графически', () => {
-  for (const method of ['substitution', 'elimination', 'graphical']) {
+  for (const method of ['substitution', 'elimination', 'cramer', 'graphical']) {
     const r = solveSystemByMethod(['x+y=5', 'x-y=1'], method); near(r.values.x, 3); near(r.values.y, 2); assert.ok(r.steps.length >= 3);
   }
 });

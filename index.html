@@ -26,6 +26,12 @@
 
   <nav class="tabs" id="tabs">
     <button type="button" class="tab active" data-go="calc">Счёт</button>
+    <button type="button" class="tab" data-go="mean">Среднее</button>
+    <button type="button" class="tab" data-go="stats">Статистика</button>
+    <button type="button" class="tab" data-go="equation">Уравнения</button>
+    <button type="button" class="tab" data-go="system">Системы</button>
+    <button type="button" class="tab" data-go="history">Журнал</button>
+    <button type="button" class="tab" data-go="ideas">2000 идей</button>
     <button type="button" class="tab" data-go="ineq">Неравенства</button>
     <button type="button" class="tab" data-go="interval">Прямая</button>
     <button type="button" class="tab" data-go="graph">Графики</button>
@@ -93,6 +99,135 @@
           <div class="col-out" id="long-out" hidden></div>
         </div>
 
+      </div>
+    </section>
+
+    <!-- ========================= СРЕДНЕЕ АРИФМЕТИЧЕСКОЕ =================== -->
+    <section class="screen" id="screen-mean">
+      <div class="panel">
+        <label class="field-label" for="mean-values">Числа (разделяйте точкой с запятой или новой строкой)</label>
+        <textarea id="mean-values" rows="4" inputmode="decimal" autocomplete="off" spellcheck="false" placeholder="Например: 12,5; 15; 18,5"></textarea>
+        <p class="hint hint-note">Можно вводить целые и десятичные числа, в том числе отрицательные. Пустые значения и текст будут отмечены как ошибка.</p>
+        <button class="btn primary wide" id="mean-calculate">Найти среднее</button>
+        <div class="out" id="mean-output" aria-live="polite"></div>
+      </div>
+    </section>
+
+    <!-- =========================== СТАТИСТИКА ============================ -->
+    <section class="screen" id="screen-stats">
+      <div class="panel">
+        <label class="field-label" for="stats-values">Набор данных (числа; разделитель — ; или новая строка)</label>
+        <textarea id="stats-values" rows="4" placeholder="12,5; 15; 18,5; 20" autocomplete="off" spellcheck="false"></textarea>
+        <button class="btn primary wide" id="stats-analyze" style="margin-top:8px">Анализировать данные</button>
+        <div class="out" id="stats-output" aria-live="polite"></div>
+      </div>
+      <div class="panel" style="margin-top:10px">
+        <h2 style="margin:0 0 8px;font-size:1rem">Среднее с весами</h2>
+        <label class="field-label" for="weighted-values">Значения</label>
+        <input class="input" id="weighted-values" placeholder="Оценки: 4; 5; 3">
+        <label class="field-label" for="weighted-weights" style="margin-top:8px">Соответствующие веса</label>
+        <input class="input" id="weighted-weights" placeholder="Веса: 1; 2; 1">
+        <button class="btn wide" id="weighted-calculate" style="margin-top:8px">Найти взвешенное среднее</button>
+        <div class="out" id="weighted-output" aria-live="polite"></div>
+      </div>
+      <div class="panel" style="margin-top:10px">
+        <h2 style="margin:0 0 8px;font-size:1rem">Связь двух величин</h2>
+        <label class="field-label" for="regression-x">Значения X (пары по порядку)</label>
+        <input class="input" id="regression-x" placeholder="1; 2; 3; 4">
+        <label class="field-label" for="regression-y" style="margin-top:8px">Значения Y</label>
+        <input class="input" id="regression-y" placeholder="2; 4; 5; 8">
+        <button class="btn wide" id="regression-calculate" style="margin-top:8px">Построить линейную модель</button>
+        <div class="out" id="regression-output" aria-live="polite"></div>
+      </div>
+    </section>
+
+    <!-- ============================= УРАВНЕНИЯ ============================ -->
+    <section class="screen" id="screen-equation">
+      <div class="panel">
+        <label class="field-label" for="equation-input">Уравнение</label>
+        <input class="input" type="text" id="equation-input" value="x² − 5x + 6 = 0" autocomplete="off" spellcheck="false">
+        <div class="calc-row" style="margin-top:10px">
+          <label class="mini-label" for="equation-variable">Неизвестная</label>
+          <input class="input" id="equation-variable" type="text" value="x" maxlength="12" aria-label="Неизвестная переменная">
+        </div>
+        <label class="field-label" for="equation-method" style="margin-top:10px">Способ решения</label>
+        <select class="input" id="equation-method">
+          <option value="auto">Автоматически (линейное, квадратное, затем численно)</option>
+          <option value="linear">Только линейный способ</option>
+          <option value="quadratic">Квадратное уравнение (дискриминант)</option>
+          <option value="numeric">Численно на отрезке от −100 до 100</option>
+        </select>
+        <label class="field-label" for="equation-display-mode" style="margin-top:10px">Как показывать решение</label>
+        <select class="input" id="equation-display-mode">
+          <option value="answer">Ответ и все шаги</option>
+          <option value="teacher">Объясни как преподаватель</option>
+          <option value="gradual">Подсказки постепенно, ответ в конце</option>
+        </select>
+        <div class="chips">
+          <button type="button" data-equation="5(x − 10) = 2x + 10">Линейное</button>
+          <button type="button" data-equation="x² − 5x + 6 = 0">Квадратное</button>
+          <button type="button" data-equation="x³ − 2x = 0">Нелинейное</button>
+        </div>
+        <button class="btn primary wide" id="equation-solve">Решить уравнение</button>
+        <p class="hint hint-note">Численный поиск рассматривает только отрезок [−100; 100] и может не найти корни касания или корни вне отрезка. Автоматический режим точно решает линейные и квадратные уравнения, остальные проверяет численно.</p>
+        <div class="out" id="equation-output" aria-live="polite"></div>
+        <details class="more" style="margin-top:12px">
+          <summary>Найти ошибку в чужом решении</summary>
+          <div class="more-body">
+            <label class="field-label" for="student-steps">Каждый переход — с новой строки; несколько ответов — через точку с запятой</label>
+            <textarea id="student-steps" rows="4" placeholder="(x − 2)(x − 3) = 0&#10;x² − 5x + 6 = 0&#10;x = 2; x = 3" spellcheck="false"></textarea>
+            <button class="btn wide" id="check-student-steps" style="margin-top:8px">Проверить шаги</button>
+            <div class="out" id="student-check-output" aria-live="polite"></div>
+            <p class="hint hint-note">Проверка сравнивает множества действительных корней каждого шага. Для численных уравнений результат ограничен точностью и диапазоном решателя.</p>
+          </div>
+        </details>
+      </div>
+    </section>
+
+    <!-- ========================== СИСТЕМЫ УРАВНЕНИЙ ======================= -->
+    <section class="screen" id="screen-system">
+      <div class="panel">
+        <div class="field-label">Два линейных уравнения (по одному в строке)</div>
+        <input class="input" type="text" id="system-eq1" value="x + y = 5" aria-label="Первое уравнение системы" autocomplete="off" spellcheck="false">
+        <input class="input" type="text" id="system-eq2" value="x − y = 1" aria-label="Второе уравнение системы" autocomplete="off" spellcheck="false" style="margin-top:8px">
+        <div class="calc-row" style="margin-top:10px">
+          <label class="mini-label" for="system-variables">Переменные (через запятую)</label>
+          <input class="input" id="system-variables" value="x, y" aria-label="Переменные системы">
+        </div>
+        <label class="field-label" for="system-method" style="margin-top:10px">Метод решения</label>
+        <select class="input" id="system-method">
+          <option value="compare">Сравнить методы</option>
+          <option value="elimination">Сложение (исключение переменной)</option>
+          <option value="substitution">Подстановка</option>
+          <option value="cramer">Определители Крамера</option>
+          <option value="graphical">Графический</option>
+        </select>
+        <button class="btn primary wide" id="system-solve" style="margin-top:10px">Решить систему</button>
+        <p class="hint hint-note">Сейчас поддерживаются системы из двух линейных уравнений с двумя переменными. Вырожденные случаи (нет решений или их бесконечно много) определяются отдельно.</p>
+        <div class="out" id="system-output" aria-live="polite"></div>
+      </div>
+    </section>
+
+    <!-- ============================ ЖУРНАЛ ================================ -->
+    <section class="screen" id="screen-history">
+      <div class="panel">
+        <div class="panel-head"><h2>Журнал решений</h2><button class="btn" id="history-clear" type="button">Очистить</button></div>
+        <p class="hint hint-note">Записи хранятся только в этом браузере. Нажмите на запись, чтобы восстановить условие и решение.</p>
+        <div class="list" id="history-list" aria-live="polite"></div>
+      </div>
+    </section>
+
+    <!-- ======================== КАТАЛОГ ИДЕЙ ============================= -->
+    <section class="screen" id="screen-ideas">
+      <div class="panel">
+        <div class="panel-head"><h2>Каталог идей развития</h2></div>
+        <p class="hint hint-note">Здесь собраны идеи для будущих версий, не активные функции. Метки показывают, нужны ли камера, сеть или внешние сервисы.</p>
+        <input class="input" id="idea-search" type="search" placeholder="Поиск по 2000 идеям" autocomplete="off">
+        <select class="input" id="idea-category" style="margin-top:8px" aria-label="Категория идей"></select>
+        <p class="hint hint-note" id="idea-count" aria-live="polite"></p>
+        <div class="list" id="idea-list"></div>
+        <button class="btn wide" id="ideas-more" type="button" style="margin-top:8px">Показать ещё</button>
+        <a class="btn wide" href="IDEAS-2000.md" download style="display:block;text-align:center;text-decoration:none;margin-top:8px">Скачать все идеи (Markdown)</a>
       </div>
     </section>
 

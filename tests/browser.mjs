@@ -92,6 +92,12 @@ ok('модули загрузились, вкладок «Задачи» и «Р
   assert(!$$('.tab').some((b) => b.dataset.go === 'task'), 'вкладка «Задачи» осталась');
   assert(!$$('.tab').some((b) => b.dataset.go === 'ru'), 'вкладка «Русский» осталась');
   assert($$('.tab').some((b) => b.dataset.go === 'smeta'), 'вкладки «Смета» нет');
+  assert($$('.tab').some((b) => b.dataset.go === 'mean'), 'вкладки «Среднее» нет');
+  assert($$('.tab').some((b) => b.dataset.go === 'stats'), 'вкладки «Статистика» нет');
+  assert($$('.tab').some((b) => b.dataset.go === 'equation'), 'вкладки «Уравнения» нет');
+  assert($$('.tab').some((b) => b.dataset.go === 'system'), 'вкладки «Системы» нет');
+  assert($$('.tab').some((b) => b.dataset.go === 'history'), 'вкладки «Журнал» нет');
+  assert($$('.tab').some((b) => b.dataset.go === 'ideas'), 'вкладки «Идеи» нет');
   assert($('#screen-smeta'), 'screen-smeta не найден');
 });
 
@@ -106,6 +112,92 @@ ok('внутри iframe — отдельный движок smeta.html', () => {
   assert(frame, 'iframe не найден');
   assert(/smeta\.html$/.test(frame.getAttribute('src')), `src=${frame.getAttribute('src')}`);
   assert($('.smeta-note a[href="smeta.html"]'), 'ссылки на smeta.html нет');
+});
+
+console.log('\nИДЕИ И СТАТИСТИКА');
+ok('каталог показывает и фильтрует 2000 идей с честной маркировкой черновика', () => {
+  click('[data-go="ideas"]');
+  assert($('#idea-count').textContent.includes('2000'), 'не показано общее число идей');
+  assert($$('#idea-list article').length === 60, 'не сработала постраничная выдача');
+  type('#idea-search', 'контрпример');
+  assert($('#idea-count').textContent.includes('50'), 'поиск не фильтрует каталог');
+  assert($('#screen-ideas').textContent.includes('не активные функции'), 'нет предупреждения о статусе каталога');
+});
+
+console.log('\nСРЕДНЕЕ И РЕШЕНИЕ УРАВНЕНИЙ');
+ok('среднее арифметическое показывает вычисление по шагам', () => {
+  click('[data-go="mean"]');
+  type('#mean-values', '12,5; 15; 18,5');
+  click('#mean-calculate');
+  assert($('#mean-output').textContent.includes('15,33333333'), 'среднее не показано');
+  assert($('#mean-output').textContent.includes('Количество чисел: 3'), 'количество не показано');
+});
+ok('статистика: сводка, выбросы, взвешенное среднее и регрессия', () => {
+  click('[data-go="stats"]');
+  type('#stats-values', '1; 2; 3; 4; 100');
+  click('#stats-analyze');
+  assert($('#stats-output').textContent.includes('Медиана: 3'), 'медиана неверна');
+  assert($('#stats-output').textContent.includes('100'), 'выброс не отмечен');
+  assert($('#stats-output').innerHTML.includes('<svg'), 'гистограмма не показана');
+  type('#weighted-values', '3; 4; 5'); type('#weighted-weights', '1; 2; 1');
+  click('#weighted-calculate');
+  assert($('#weighted-output').textContent.includes('4'), 'взвешенное среднее не посчитано');
+  type('#regression-x', '1; 2; 3'); type('#regression-y', '2; 4; 6');
+  click('#regression-calculate');
+  assert($('#regression-output').textContent.includes('y = 2x'), 'регрессия не построена');
+  assert($('#regression-output').innerHTML.includes('<svg'), 'диаграмма регрессии не показана');
+});
+ok('уравнения: автоматический способ находит оба квадратных корня', () => {
+  click('[data-go="equation"]');
+  type('#equation-input', 'x² − 5x + 6 = 0');
+  click('#equation-solve');
+  assert($('#equation-output').textContent.includes('x = 2'), 'первый корень не показан');
+  assert($('#equation-output').textContent.includes('x = 3'), 'второй корень не показан');
+  type('#equation-method', 'quadratic');
+  click('#equation-solve');
+  assert($('#equation-output').textContent.includes('x = 2') && $('#equation-output').textContent.includes('x = 3'), 'выбор метода по дискриминанту не сработал');
+  type('#equation-display-mode', 'teacher'); click('#equation-solve');
+  assert($('#equation-output').textContent.includes('Объяснение как преподаватель'), 'не появился разбор преподавателя');
+  type('#equation-display-mode', 'gradual'); click('#equation-solve');
+  assert($('#equation-answer-card').hidden, 'ответ выдан до раскрытия шагов');
+  for (let i = 0; i < 6 && !$('#equation-next-hint').hidden; i++) click('#equation-next-hint');
+  assert(!$('#equation-answer-card').hidden, 'ответ не открылся после подсказок');
+  type('#equation-display-mode', 'answer');
+});
+ok('уравнения: тождество сообщает о бесконечно многих решениях', () => {
+  type('#equation-method', 'auto');
+  type('#equation-input', '2x + 1 = 2x + 1');
+  click('#equation-solve');
+  assert($('#equation-output').textContent.includes('бесконечно много решений'), 'вырожденный случай показан неверно');
+});
+ok('проверка чужого решения находит первый неверный переход', () => {
+  type('#equation-input', 'x² − 5x + 6 = 0');
+  type('#student-steps', '(x − 2)(x − 3) = 0\nx − 2 = 0');
+  click('#check-student-steps');
+  assert($('#student-check-output').textContent.includes('Первая ошибка — шаг 2'), 'не найден первый неверный шаг');
+});
+ok('системы: сравнение четырёх методов приводит к одному решению', () => {
+  click('[data-go="system"]');
+  type('#system-eq1', 'x + y = 5');
+  type('#system-eq2', 'x - y = 1');
+  type('#system-method', 'compare');
+  click('#system-solve');
+  const result = $('#system-output').textContent;
+  assert(result.includes('Сложение (исключение)'), 'нет сложения');
+  assert(result.includes('Подстановка'), 'нет подстановки');
+  assert(result.includes('Определители Крамера'), 'нет метода Крамера');
+  assert(result.includes('Графический метод'), 'нет графического метода');
+  assert($('#system-output').innerHTML.includes('<svg'), 'графический метод не построил SVG');
+  assert((result.match(/\(3; 2\)/g) || []).length >= 4, 'методы разошлись в ответе');
+});
+ok('журнал сохраняет, восстанавливает и очищает решение', () => {
+  click('[data-go="history"]');
+  assert($$('#history-list [data-history-id]').length >= 3, 'решения не попали в журнал');
+  click('#history-list [data-history-id]');
+  assert($('#screen-system').classList.contains('active'), 'решение системы не восстановлено');
+  click('[data-go="history"]');
+  click('#history-clear');
+  assert(!$('#history-list [data-history-id]'), 'журнал не очистился');
 });
 
 console.log('\nГЕОМЕТРИЯ: идеальный треугольник');
